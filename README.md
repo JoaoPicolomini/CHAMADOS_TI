@@ -1,220 +1,124 @@
-# Sistema de Chamados de T.I
+# 🛡️ Costa Lavos | Central de Suporte T.I
 
-Central de suporte de T.I com abertura de chamados, acompanhamento de SLA, base de conhecimento e relatórios analíticos.
-
----
-
-## Stack
-
-| Camada | Tecnologia |
-|---|---|
-| Frontend | React 19 + Next.js 16 (App Router) |
-| Banco | Supabase (PostgreSQL) |
-| Autenticação | Azure MSAL (Microsoft AD) |
-| Estilização | Tailwind CSS v4 |
-| Formulários | React Hook Form + Zod |
-| E-mail | Nodemailer (SMTP Office 365) |
-| Storage | Supabase Storage |
-| Exportação | XLSX |
-| Gráficos | Recharts |
+Uma plataforma premium de Service Desk construída para modernizar a gestão de incidentes e solicitações de tecnologia. Desenvolvida com **Next.js 16**, **Supabase** e **Azure AD**, a central oferece um ecossistema completo para usuários, técnicos e gestores.
 
 ---
 
-## Estrutura de Rotas
+## 🌟 Diferenciais do Sistema
 
-```
-/                            → Landing page pública
-/ti/abrir                    → Formulário público de abertura (sem login)
-/auth/login                  → Login via Azure AD
-
-/ti/                         → Home do sistema (requer login)
-/ti/dashboard                → Painel de chamados com filtros
-/ti/meus-chamados            → Chamados do usuário logado
-/ti/chamado/[id]             → Detalhe e atendimento do chamado
-/ti/analytics                → Relatórios e gráficos
-/ti/base-conhecimento        → Artigos de suporte
-/ti/auditoria                → Trilha de auditoria
-
-/ti/admin/usuarios           → Gerenciar usuários
-/ti/admin/tecnicos           → Técnicos e equipes
-/ti/admin/ativos             → Inventário de ativos de TI
-/ti/admin/perfis             → Perfis de acesso
-/ti/admin/matriz-acesso      → RBAC — permissões por perfil
-/ti/admin/email-logs         → Logs de notificações
-/ti/config                   → Configurações gerais e SLA
-```
+*   **Design State-of-the-Art**: Interface moderna baseada em Glassmorphism, tipografia refinada (Inter) e paleta Navy/Gold.
+*   **Workflow Inteligente**: Máquina de estados robusta que valida cada transição de status com base no perfil do usuário.
+*   **SLA Engine Real-time**: Cálculo de prazos com suporte a Horário Comercial (8h-18h), enviando alertas automáticos de violação.
+*   **Segurança Enterprise**: Autenticação via Microsoft MSAL (Azure AD) combinada com controle de acesso granular (RBAC).
 
 ---
 
-## Banco de Dados (Supabase)
+## 🛠️ Stack Tecnológica
 
-### Tabelas Principais
-
-| Tabela | Descrição |
-|---|---|
-| `ti_chamados` | Tabela principal de chamados |
-| `ti_categorias` | Hierarquia de categorias e subcategorias |
-| `ti_equipes` | Equipes de suporte (N1, N2, N3, Infra...) |
-| `ti_tecnicos` | Técnicos vinculados às equipes |
-| `ti_ativos` | Inventário de ativos de TI |
-| `ti_sla_configs` | Regras de SLA por prioridade e categoria |
-| `ti_workflow_events` | Log imutável de transições de status |
-| `ti_field_change_logs` | Log de alterações de campos |
-| `ti_comentarios` | Thread de comentários por chamado |
-| `ti_anexos` | Arquivos e evidências |
-| `ti_relacionamentos` | Vínculos entre chamados (duplicata, pai/filho) |
-| `ti_base_conhecimento` | Artigos de resolução |
-| `ti_access_users` | Whitelist de usuários com perfis |
-| `ti_permissions` | Permissões do sistema |
-| `ti_profile_permissions` | Matriz de permissões por perfil |
-| `ti_notification_logs` | Fila de notificações |
-| `ti_email_logs` | Log de e-mails enviados |
-
-### Aplicar Migrações
-
-```bash
-# Via Supabase CLI
-supabase db push
-
-# Ou via Dashboard do Supabase:
-# SQL Editor → Cole o conteúdo dos arquivos na ordem:
-# 1. supabase/migrations/20260430000000_ti_schema.sql
-# 2. supabase/migrations/20260430000001_ti_seeds.sql
-```
-
-### Storage Bucket
-
-Crie o bucket `ti-attachments` no painel do Supabase (Storage → New Bucket) com acesso privado.
+| Camada | Tecnologia | Descrição |
+|---|---|---|
+| **Core** | [Next.js 16](https://nextjs.org/) | App Router, Server Actions e Turbopack |
+| **Banco de Dados** | [Supabase](https://supabase.com/) | PostgreSQL com RLS e Auditoria Imutável |
+| **Autenticação** | [Azure MSAL](https://learn.microsoft.com/en-us/entra/identity-platform/msal-overview) | Integração nativa com Microsoft AD |
+| **Estilização** | [Tailwind CSS v4](https://tailwindcss.com/) | Design tokens e utilitários modernos |
+| **Gráficos** | [Recharts](https://recharts.org/) | Dashboard analítico dinâmico |
+| **Notificações** | [Nodemailer](https://nodemailer.com/) | SMTP robusto via Office 365 |
+| **Validação** | [Zod](https://zod.dev/) | Schemas de dados e tipagem forte |
 
 ---
 
-## Workflow de Status
+## 🏗️ Arquitetura do Projeto
 
-```
-aberto
-  ├──→ em_atendimento
-  └──→ cancelado
+O sistema foi migrado e isolado para garantir performance e manutenibilidade.
 
-em_atendimento
-  ├──→ pendente_usuario
-  ├──→ pendente_terceiro
-  ├──→ escalado
-  ├──→ resolvido  ← requer campo "solução"
-  └──→ cancelado  ← requer justificativa
-
-pendente_usuario
-  ├──→ em_atendimento
-  └──→ fechado_automatico  (automático após 7 dias sem resposta)
-
-pendente_terceiro
-  └──→ em_atendimento
-
-escalado
-  └──→ em_atendimento
-
-resolvido
-  ├──→ fechado
-  └──→ reaberto  ← requer justificativa
-
-fechado / fechado_automatico
-  └──→ reaberto
-
-cancelado  (terminal)
-```
+*   **Frontend**: `/src/app/ti/*` (Rotas isoladas)
+*   **Lógica de Negócio**: `/src/lib/ti/*` (Ações, Workflows e Tipos)
+*   **API / Webhooks**: `/src/app/api/ti/*` (Jobs de monitoramento e criação)
+*   **Banco de Dados**: Migrations prefixadas com `ti_` para separação de esquemas.
 
 ---
 
-## Perfis de Acesso
+## 🚀 Funcionalidades Entregues
 
-| Perfil | Descrição |
-|---|---|
-| `user` | Colaborador — abre e acompanha os próprios chamados |
-| `tecnico` | Técnico de TI — atende chamados, gerencia KB |
-| `gestor_ti` | Gestão — analytics, configurações, equipes |
-| `admin` | Acesso total ao sistema |
+### 👤 Para Usuários
+*   **Abertura Expressa (`/ti/abrir`)**: Wizard de 3 etapas com compressão de imagens no cliente e upload de anexos.
+*   **Meus Chamados**: Acompanhamento em tempo real do status, SLA e comentários técnicos.
+*   **Base de Conhecimento**: Acesso a artigos de solução rápida para autoatendimento.
+
+### 🛠️ Para Técnicos
+*   **Dashboard Operacional**: Filtros avançados por status, prioridade e categoria.
+*   **Gestão de Workflow**: Ações de assumir, escalar (N1, N2, N3), pausar e resolver chamados.
+*   **Timeline Detalhada**: Histórico visual de todas as alterações feitas no chamado.
+*   **Comentários Internos/Externos**: Comunicação segregada entre equipe técnica e usuário.
+
+### 📊 Para Gestores (Admin)
+*   **Analytics Pro**: Gráficos de volume, tendência, MTTR e conformidade de SLA.
+*   **Gestão de Ativos**: Inventário completo de hardware e software da empresa.
+*   **Matriz de Acesso**: Configuração dinâmica de permissões por perfil (RBAC).
+*   **Monitor de SLA**: Visão crítica de todos os chamados próximos da violação.
+*   **Automação (Jobs)**: Envio automático de lembretes e fechamento de chamados inativos.
 
 ---
 
-## Variáveis de Ambiente
+## 🔐 Segurança e Governança
 
-Crie o arquivo `.env.local` baseado no exemplo abaixo:
+1.  **RBAC (Role Based Access Control)**: Perfis `user`, `tecnico`, `gestor_ti` e `admin`.
+2.  **Auditoria Imutável**: Todas as trocas de status e alterações de campos sensíveis são gravadas em tabelas que não permitem DELETE/UPDATE.
+3.  **Whitelist de Acesso**: Apenas e-mails autorizados na tabela `ti_access_users` podem acessar os módulos internos.
+4.  **Sanitização de Dados**: Inputs validados via Zod tanto no client quanto no server.
 
+---
+
+## ⚙️ Configuração do Ambiente
+
+### 1. Variáveis de Ambiente (`.env.local`)
 ```env
 # Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://SEU_PROJETO.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key
-SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
+NEXT_PUBLIC_SUPABASE_URL=https://abc.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 
 # Azure MSAL
-NEXT_PUBLIC_AZURE_CLIENT_ID=seu_client_id
-NEXT_PUBLIC_AZURE_TENANT_ID=seu_tenant_id
+NEXT_PUBLIC_AZURE_CLIENT_ID=...
+NEXT_PUBLIC_AZURE_TENANT_ID=...
 
-# SMTP (Office 365)
+# SMTP
 SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
-SMTP_USER=ti@suaempresa.com.br
-SMTP_PASS=sua_senha_app
+SMTP_USER=ti@costalavos.com.br
+SMTP_PASS=...
 
-# URL da aplicação (para links nos e-mails)
-NEXT_PUBLIC_APP_URL=https://chamados.suaempresa.com.br
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
----
+### 2. Banco de Dados
+Execute as migrações no SQL Editor do Supabase na ordem:
+1. `supabase/migrations/20260430000000_ti_schema.sql`
+2. `supabase/migrations/20260430000001_ti_seeds.sql`
 
-## Executar localmente
-
+### 3. Execução
 ```bash
 npm install
 npm run dev
 ```
 
-Acesse: [http://localhost:3000](http://localhost:3000)
-
 ---
 
-## Fases de Implementação
+## 📈 Status do Projeto (Fases)
 
-| Fase | Descrição | Status |
+| Fase | Status | Descrição |
 |---|---|---|
-| 1 | Infraestrutura — banco, tipos, workflow, email, layout | ✅ Concluída |
-| 2 | Formulário público de abertura (`/ti/abrir`) | 🔄 Próxima |
-| 3 | Dashboard com filtros e listagem | ⏳ Pendente |
-| 4 | Detalhe do chamado e workflow completo | ⏳ Pendente |
-| 5 | SLA engine e notificações automáticas | ⏳ Pendente |
-| 6 | Base de conhecimento | ⏳ Pendente |
-| 7 | Analytics e relatórios | ⏳ Pendente |
-| 8 | Admin — usuários, equipes, ativos, SLA | ⏳ Pendente |
-| 9 | Polimento, testes e deploy | ⏳ Pendente |
+| **1. Infraestrutura** | ✅ | Banco, Auth, Email, Layout base |
+| **2. Portal Público** | ✅ | Wizard de abertura e Landing Page |
+| **3. Dashboard** | ✅ | Listagem, Filtros e Exportação |
+| **4. Workflow** | ✅ | Atendimento, Timeline e Ações |
+| **5. SLA & Jobs** | ✅ | Alertas automáticos e Auto-close |
+| **6. KB (Base)** | ✅ | Artigos e Markdown Editor |
+| **7. Analytics** | ✅ | Recharts e BI operacional |
+| **8. Administração** | ✅ | Gestão de Ativos, Usuários e RBAC |
+| **9. Deploy** | 🔄 | Testes finais e Staging |
 
 ---
 
-## Estrutura de Arquivos
-
-```
-src/
-├── app/
-│   ├── ti/
-│   │   ├── layout.tsx           ← Sidebar + autenticação
-│   │   ├── page.tsx             ← Home
-│   │   ├── abrir/page.tsx       ← Formulário público
-│   │   ├── dashboard/page.tsx
-│   │   ├── chamado/[id]/page.tsx
-│   │   ├── analytics/page.tsx
-│   │   ├── base-conhecimento/
-│   │   ├── auditoria/page.tsx
-│   │   └── admin/
-│   └── auth/login/page.tsx
-├── lib/
-│   └── ti/
-│       ├── types.ts             ← Interfaces TypeScript
-│       ├── constants.ts         ← Labels, cores, constantes
-│       ├── workflow.ts          ← State machine de status
-│       ├── actions.ts           ← Server Actions (CRUD)
-│       └── email/
-│           ├── transporter.ts   ← Nodemailer
-│           └── templates.ts     ← Templates HTML
-└── supabase/
-    └── migrations/
-        ├── 20260430000000_ti_schema.sql
-        └── 20260430000001_ti_seeds.sql
-```
+Developed with ❤️ for **Costa Lavos**.
