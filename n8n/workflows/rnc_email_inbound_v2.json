@@ -1,0 +1,273 @@
+{
+  "name": "Ler E-mails e Atualizar RNC (V2 - Via Postgres)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getMany",
+        "downloadAttachments": false
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Ler Respostas (IMAP)"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "name",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "rnc_email_raw_logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "message_id": "={{ $json.messageId }}",
+            "sender": "={{ $json.from.address }}",
+            "subject": "={{ $json.subject }}",
+            "body_text": "={{ $json.text }}",
+            "received_at": "={{ $json.date }}",
+            "rnc_number_detected": "={{ $json.subject.match(/\\[RNC-RNC-([^\\]]+)\\]/)?.[1] || $json.subject.match(/\\[RNC-([^\\]]+)\\]/)?.[1] }}"
+          }
+        }
+      },
+      "name": "Log Raw Email",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "subject-check",
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "[RNC-",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "sender-check",
+              "leftValue": "={{ $json.from.address }}",
+              "rightValue": "automacao@costalavos.com.br",
+              "operator": {
+                "type": "string",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Filtros de Segurança",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "rnc_number",
+              "value": "={{ $json.subject.match(/\\[RNC-RNC-([^\\]]+)\\]/)?.[1] || $json.subject.match(/\\[RNC-([^\\]]+)\\]/)?.[1] }}"
+            },
+            {
+              "name": "sender_email",
+              "value": "={{ $json.from.address }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text.split(/IMPORTANTE:|Em .* escreveu:|De: .* <automacao@costalavos/i)[0].trim() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extrair Dados RNC",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "name",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "rnc_records"
+        },
+        "returnAll": false,
+        "where": {
+          "values": [
+            {
+              "column": "rnc_number",
+              "condition": "equal",
+              "value": "={{ $json.rnc_number.startsWith('RNC-') ? $json.rnc_number : 'RNC-' + $json.rnc_number }}"
+            }
+          ]
+        }
+      },
+      "name": "Buscar RNC",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "rnc-found",
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "RNC Existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "name",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "rnc_comments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rnc_id": "={{ $json.id }}",
+            "author_name": "={{ $node[\"Extrair Dados RNC\"].json.sender_email }}",
+            "author_email": "={{ $node[\"Extrair Dados RNC\"].json.sender_email }}",
+            "content": "={{ $node[\"Extrair Dados RNC\"].json.text }}",
+            "is_internal": "false",
+            "stage": "={{ $json.status }}"
+          }
+        }
+      },
+      "name": "Inserir Comentário",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1100,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Ler Respostas (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Log Raw Email",
+            "index": 0
+          },
+          {
+            "node": "Filtros de Segurança",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtros de Segurança": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados RNC",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados RNC": {
+      "main": [
+        [
+          {
+            "node": "Buscar RNC",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar RNC": {
+      "main": [
+        [
+          {
+            "node": "RNC Existe?",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RNC Existe?": {
+      "main": [
+        [
+          {
+            "node": "Inserir Comentário",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

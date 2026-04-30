@@ -1,0 +1,151 @@
+{
+  "name": "Ler E-mails e Atualizar RNC (V2)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getMany",
+        "downloadAttachments": false
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "name": "Ler Respostas (IMAP)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "subject-check",
+              "leftValue": "={{ $json.subject }}",
+              "rightValue": "[RNC-",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "sender-check",
+              "leftValue": "={{ $json.from.address }}",
+              "rightValue": "automacao@costalavos.com.br",
+              "operator": {
+                "type": "string",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Filtros de Segurança",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "rnc_number",
+              "value": "={{ $json.subject.match(/\\[RNC-RNC-([^\\]]+)\\]/)?.[1] || $json.subject.match(/\\[RNC-([^\\]]+)\\]/)?.[1] }}"
+            },
+            {
+              "name": "sender_email",
+              "value": "={{ $json.from.address }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text.split(/IMPORTANTE:|Em .* escreveu:|De: .* <automacao@costalavos/i)[0].trim() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extrair Dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://qualidade.costalavosapp.com.br/api/rnc/webhook/email-reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer rnc_costalavos_super_secret_token_123"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "rnc_number",
+              "value": "={{ $json.rnc_number }}"
+            },
+            {
+              "name": "sender_email",
+              "value": "={{ $json.sender_email }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Atualizar RNC via Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [660, 0]
+    }
+  ],
+  "connections": {
+    "Ler Respostas (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Filtros de Segurança",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtros de Segurança": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "Atualizar RNC via Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
