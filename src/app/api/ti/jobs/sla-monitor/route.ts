@@ -80,7 +80,8 @@ export async function GET(req: NextRequest) {
         }
 
         // 2. Alerta ao técnico (somente se houver técnico atribuído)
-        const tecnico = chamado.tecnico as { id: string; email: string; nome: string } | null
+        const tData = Array.isArray(chamado.tecnico) ? chamado.tecnico[0] : chamado.tecnico
+        const tecnico = tData as { id: string; email: string; nome: string } | null
         if (!tecnico?.email) continue
 
         const limiarAlerta = sla.percentual >= 90 ? 90 : sla.percentual >= 70 ? 70 : 0
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
 
         // Envia alerta
         const { subject, html } = emailAlertaSla(
-          chamado,
+          { ...chamado, tecnico } as any,
           sla.percentual,
           tecnico.email,
           APP_URL,

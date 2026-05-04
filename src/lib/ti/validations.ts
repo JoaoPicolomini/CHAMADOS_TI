@@ -5,14 +5,14 @@ export const etapa1Schema = z.object({
   solicitante_email:   z.string().email('E-mail inválido'),
   solicitante_ramal:   z.string().max(20).optional(),
   solicitante_setor:   z.string().min(2, 'Informe o setor').max(100),
-  solicitante_unidade: z.string().max(100).optional(),
+  solicitante_unidade: z.string().min(2, 'Informe a unidade').max(100),
 })
 
 export const etapa2Schema = z.object({
   categoria_id:      z.string().uuid().optional(),
   subcategoria_id:   z.string().uuid().optional(),
-  tipo:              z.enum(['incidente', 'solicitacao', 'problema', 'mudanca']).default('incidente'),
-  titulo:            z.string().min(5, 'Título deve ter no mínimo 5 caracteres').max(255, 'Título muito longo'),
+  tipo:              z.enum(['incidente', 'solicitacao', 'problema', 'mudanca']).optional(),
+  titulo:            z.string().max(255).optional(),
   descricao:         z.string().min(10, 'Descreva o problema com mais detalhes').max(10000),
   passos_reproduzir: z.string().max(5000).optional(),
   ativo_descricao:   z.string().max(200).optional(),

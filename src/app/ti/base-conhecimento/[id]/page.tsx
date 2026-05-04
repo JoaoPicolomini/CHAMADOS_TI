@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useMsal } from '@azure/msal-react'
 import {
   ArrowLeft, Eye, ThumbsUp, ThumbsDown, Tag, Clock,
@@ -58,7 +58,7 @@ function renderMarkdown(raw: string): string {
 
   // 8. Listas não-ordenadas
   s = s.replace(/^[-*] (.+)$/gm, '<li style="margin:5px 0;color:#374151">$1</li>')
-  s = s.replace(/(<li[^>]*>.*?<\/li>\n?)+/gs, (m: string) =>
+  s = s.replace(/(<li[^>]*>[\s\S]*?<\/li>\n?)+/g, (m: string) =>
     `<ul style="padding-left:24px;margin:12px 0;list-style:disc">${m}</ul>`
   )
 
@@ -105,14 +105,19 @@ export default function ArtigoKbPage({ params }: { params: Promise<{ id: string 
   const [utilSim,    setUtilSim]    = useState(0)
   const [utilNao,    setUtilNao]    = useState(0)
 
+  const searchParams = useSearchParams()
+  const isPublicView = searchParams.get('public') === 'true'
+
   useEffect(() => {
     const account = accounts[0]
-    if (!account) return
+    if (!account || isPublicView) {
+      setAuthReady(true)
+      return
+    }
     checkTiUserAccess(account.username).then(r => {
-      if (!r.granted) { router.push('/ti'); return }
       setAuthReady(true)
     })
-  }, [accounts, router])
+  }, [accounts, isPublicView])
 
   useEffect(() => {
     if (!authReady) return
@@ -165,7 +170,7 @@ export default function ArtigoKbPage({ params }: { params: Promise<{ id: string 
 
         {/* Back link */}
         <Link
-          href="/ti/base-conhecimento"
+          href={`/ti/base-conhecimento${isPublicView ? '?public=true' : ''}`}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6B7280', textDecoration: 'none', fontSize: '0.85rem', marginBottom: 16, fontWeight: 500 }}
         >
           <ArrowLeft size={14} /> Base de Conhecimento

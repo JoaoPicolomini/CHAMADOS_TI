@@ -480,7 +480,7 @@ function renderMarkdown(raw: string): string {
   s = s.replace(/^&gt; (.+)$/gm, '<blockquote style="border-left:3px solid #2563EB;padding:8px 14px;margin:10px 0;background:#EFF6FF;color:#1E40AF;border-radius:0 6px 6px 0">$1</blockquote>')
   s = s.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #E5E7EB;margin:20px 0">')
   s = s.replace(/^[-*] (.+)$/gm, '<li style="margin:4px 0">$1</li>')
-  s = s.replace(/(<li[^>]*>.*?<\/li>\n?)+/gs, (m: string) => `<ul style="padding-left:20px;margin:10px 0">${m}</ul>`)
+  s = s.replace(/(<li[^>]*>[\s\S]*?<\/li>\n?)+/g, (m: string) => `<ul style="padding-left:20px;margin:10px 0">${m}</ul>`)
   const lines = s.split('\n')
   const result: string[] = []
   for (const line of lines) {

@@ -30,9 +30,27 @@ export async function POST(req: NextRequest) {
 
     const data      = parsed.data
     const supabase  = getAdminSupabase()
-    const prioridade: TiPrioridade = 'media'
+    
+    // 1. Busca a severidade padrão da categoria/subcategoria
+    let prioridade: TiPrioridade = 'media'
+    
+    const { data: classif } = await supabase
+      .from('ti_categorias')
+      .select('id, tipo_padrao, severidade, categoria_pai')
+      .in('id', [data.subcategoria_id, data.categoria_id].filter(Boolean) as string[])
 
-    // SLA lookup — por categoria, depois genérico
+    if (classif && classif.length > 0) {
+      const sub = classif.find(c => c.id === data.subcategoria_id)
+      const cat = classif.find(c => c.id === data.categoria_id)
+      
+      if (sub?.severidade) {
+        prioridade = sub.severidade
+      } else if (cat?.severidade) {
+        prioridade = cat.severidade
+      }
+    }
+
+    // 2. SLA lookup — prioriza config específica, senão usa Geral baseada na prioridade definida
     let prazoHoras      = getPrazoHorasPadrao(prioridade)
     let horarioComercial = true
 
@@ -67,6 +85,19 @@ export async function POST(req: NextRequest) {
     const slaPrazo = calcularPrazoSla(new Date(), prazoHoras, horarioComercial).toISOString()
     const ip       = req.headers.get('x-forwarded-for')?.split(',')[0] ?? null
 
+    // Determina o tipo baseado na subcategoria ou categoria (já buscados no passo 1)
+    let tipoFinal = data.tipo || 'incidente'
+    if (classif && classif.length > 0) {
+      const sub = classif.find(c => c.id === data.subcategoria_id)
+      const cat = classif.find(c => c.id === data.categoria_id)
+      
+      if (sub?.tipo_padrao) {
+        tipoFinal = sub.tipo_padrao
+      } else if (cat?.tipo_padrao) {
+        tipoFinal = cat.tipo_padrao
+      }
+    }
+
     const { data: chamado, error } = await supabase
       .from('ti_chamados')
       .insert({
@@ -74,12 +105,12 @@ export async function POST(req: NextRequest) {
         solicitante_email:   data.solicitante_email.trim().toLowerCase(),
         solicitante_ramal:   data.solicitante_ramal?.trim() ?? null,
         solicitante_setor:   data.solicitante_setor.trim(),
-        solicitante_unidade: data.solicitante_unidade?.trim() ?? null,
+        solicitante_unidade: data.solicitante_unidade?.trim() ?? 'Não Informada',
         categoria_id:        data.categoria_id ?? null,
         subcategoria_id:     data.subcategoria_id ?? null,
-        tipo:                data.tipo,
+        tipo:                tipoFinal,
         prioridade,
-        titulo:              data.titulo.trim(),
+        titulo:              (data.descricao || 'Chamado sem título').trim().slice(0, 100),
         descricao:           data.descricao.trim(),
         passos_reproduzir:   data.passos_reproduzir?.trim() ?? null,
         ativo_descricao:     data.ativo_descricao?.trim() ?? null,

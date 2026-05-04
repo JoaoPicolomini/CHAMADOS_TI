@@ -4,24 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
   Monitor, ChevronRight, Check, Upload, X, FileText,
-  AlertCircle, ArrowLeft, Loader2, CheckCircle2, Ticket,
+  AlertCircle, ArrowLeft, Loader2, CheckCircle2, Ticket, ChevronDown, Search
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { uploadAnexoAction } from '@/lib/ti/actions'
-import { TIPO_LABELS } from '@/lib/ti/constants'
-import type { TiCategoria, TiTipo } from '@/lib/ti/types'
+import { uploadAnexoAction, buscarCatalogosPublicosAction } from '@/lib/ti/actions'
+import type { TiCategoria, TiSetor, TiUnidade } from '@/lib/ti/types'
 
 // ─── Constants ───────────────────────────────────────────────────
 const STEPS = [
   { id: 1, label: 'Identificação' },
   { id: 2, label: 'Problema' },
   { id: 3, label: 'Evidências' },
-]
-
-const SETORES = [
-  'Administrativo', 'Comercial', 'Compras', 'Contabilidade', 'Diretoria',
-  'Engenharia', 'Estoque', 'Financeiro', 'Jurídico', 'Logística',
-  'Marketing', 'Produção', 'Qualidade', 'Recursos Humanos', 'TI', 'Vendas',
 ]
 
 const MAX_FILES      = 5
@@ -44,10 +37,7 @@ interface FormState {
   // Etapa 2
   categoria_id:      string
   subcategoria_id:   string
-  tipo:              TiTipo
-  titulo:            string
   descricao:         string
-  passos_reproduzir: string
   ativo_descricao:   string
 }
 
@@ -93,9 +83,97 @@ function Field({ label, required, error, hint, children }: {
   label: string; required?: boolean; error?: string; hint?: string; children: React.ReactNode
 }) {
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <label className={`label${required ? ' label-required' : ''}`}>{label}</label>
       {children}
+      {hint  && !error && <div className="field-hint">{hint}</div>}
+      {error && <div className="field-error">{error}</div>}
+    </div>
+  )
+}
+
+function SearchableSelect({ label, required, value, options, onChange, placeholder, error, hint }: {
+  label: string; required?: boolean; value: string; options: string[]; onChange: (v: string) => void; placeholder?: string; error?: string; hint?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      <label className={`label${required ? ' label-required' : ''}`}>{label}</label>
+      <div 
+        onClick={() => setOpen(!open)}
+        className={`input ${error ? 'input-error' : ''}`}
+        style={{ 
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+          background: '#FFFFFF', border: `1px solid ${error ? '#DC2626' : '#E0D8D0'}`,
+          boxShadow: open ? '0 0 0 3px rgba(106, 16, 37, 0.1)' : 'none',
+          borderColor: open ? '#6A1025' : (error ? '#DC2626' : '#E0D8D0')
+        }}
+      >
+        <span style={{ color: value ? '#121820' : '#8A8078', fontSize: '0.9375rem' }}>
+          {value || placeholder}
+        </span>
+        <ChevronDown size={16} color="#8A8078" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+      </div>
+      
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setOpen(false)} />
+          <div style={{ 
+            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, 
+            background: '#FFFFFF', border: '1px solid #E0D8D0', borderRadius: '12px',
+            boxShadow: '0 12px 30px -5px rgba(0,0,0,0.12), 0 10px 15px -6px rgba(0,0,0,0.08)',
+            zIndex: 999, overflow: 'hidden', animation: 'fadeIn 0.15s ease-out'
+          }}>
+            <div style={{ padding: '10px', background: '#F9F7F5', borderBottom: '1px solid #E0D8D0' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} color="#8A8078" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input 
+                  autoFocus
+                  className="input"
+                  style={{ 
+                    minHeight: '38px', height: '38px', padding: '0 10px 0 32px', 
+                    fontSize: '0.875rem', background: '#FFFFFF', border: '1px solid #D1D5DB'
+                  }}
+                  placeholder="Pesquisar..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                />
+              </div>
+            </div>
+            <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+              {filtered.length > 0 ? filtered.map(o => (
+                <div 
+                  key={o}
+                  onClick={(e) => { e.stopPropagation(); onChange(o); setOpen(false); setSearch('') }}
+                  style={{ 
+                    padding: '12px 16px', fontSize: '0.875rem', cursor: 'pointer',
+                    background: value === o ? '#F3EFEB' : 'transparent',
+                    color: '#121820', borderLeft: `3px solid ${value === o ? '#6A1025' : 'transparent'}`,
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={e => {
+                    if (value !== o) e.currentTarget.style.background = '#F9F7F5'
+                  }}
+                  onMouseLeave={e => {
+                    if (value !== o) e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  {o}
+                </div>
+              )) : (
+                <div style={{ padding: '24px 16px', fontSize: '0.875rem', color: '#8A8078', textAlign: 'center' }}>
+                  Nenhum resultado encontrado
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
       {hint  && !error && <div className="field-hint">{hint}</div>}
       {error && <div className="field-error">{error}</div>}
     </div>
@@ -109,21 +187,27 @@ export default function AbrirChamadoPage() {
   const [success, setSuccess]         = useState<{ numero: string } | null>(null)
   const [errors, setErrors]           = useState<Record<string, string>>({})
   const [categorias, setCategorias]   = useState<TiCategoria[]>([])
+  const [setores, setSetores]         = useState<TiSetor[]>([])
+  const [unidades, setUnidades]       = useState<TiUnidade[]>([])
   const [files, setFiles]             = useState<FileItem[]>([])
   const [dragOver, setDragOver]       = useState(false)
 
   const [form, setForm] = useState<FormState>({
     solicitante_nome: '', solicitante_email: '', solicitante_ramal: '',
     solicitante_setor: '', solicitante_unidade: '',
-    categoria_id: '', subcategoria_id: '', tipo: 'incidente',
-    titulo: '', descricao: '', passos_reproduzir: '', ativo_descricao: '',
+    categoria_id: '', subcategoria_id: '',
+    descricao: '', ativo_descricao: '',
   })
 
-  // Load categories via anon supabase client
+  // Load catalogs
   useEffect(() => {
-    const sb = createClient()
-    sb.from('ti_categorias').select('*').eq('ativo', true).order('ordem')
-      .then(({ data }) => { if (data) setCategorias(data) })
+    buscarCatalogosPublicosAction().then(res => {
+      if (res.success) {
+        setCategorias(res.categorias)
+        setSetores(res.setores)
+        setUnidades(res.unidades)
+      }
+    })
   }, [])
 
   const rootCats = categorias.filter(c => c.categoria_pai === null)
@@ -144,10 +228,12 @@ export default function AbrirChamadoPage() {
       if (!form.solicitante_email.trim())   e.solicitante_email = 'E-mail é obrigatório'
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.solicitante_email)) e.solicitante_email = 'E-mail inválido'
       if (!form.solicitante_setor.trim())   e.solicitante_setor = 'Informe o setor'
+      if (!form.solicitante_unidade.trim()) e.solicitante_unidade = 'Informe a unidade'
+      if (!form.solicitante_ramal.trim())   e.solicitante_ramal = 'Informe um telefone para contato'
+      else if (form.solicitante_ramal.replace(/\D/g, '').length < 10) e.solicitante_ramal = 'Telefone inválido'
     }
     if (s === 2) {
-      if (!form.titulo.trim())   e.titulo   = 'Título é obrigatório'
-      else if (form.titulo.trim().length < 5) e.titulo = 'Título muito curto (mín. 5 caracteres)'
+      if (!form.categoria_id)    e.categoria_id = 'Selecione uma categoria'
       if (!form.descricao.trim()) e.descricao = 'Descrição é obrigatória'
       else if (form.descricao.trim().length < 10) e.descricao = 'Descreva o problema com mais detalhes (mín. 10 caracteres)'
     }
@@ -208,10 +294,7 @@ export default function AbrirChamadoPage() {
           solicitante_unidade: form.solicitante_unidade.trim() || undefined,
           categoria_id:        form.categoria_id || undefined,
           subcategoria_id:     form.subcategoria_id || undefined,
-          tipo:                form.tipo,
-          titulo:              form.titulo.trim(),
           descricao:           form.descricao.trim(),
-          passos_reproduzir:   form.passos_reproduzir.trim() || undefined,
           ativo_descricao:     form.ativo_descricao.trim() || undefined,
         }),
       })
@@ -341,19 +424,48 @@ export default function AbrirChamadoPage() {
                 </Field>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <Field label="Setor" required error={errors.solicitante_setor}>
-                    <input className={`input${errors.solicitante_setor ? ' input-error' : ''}`} list="ti-setores" placeholder="Ex: Financeiro" value={form.solicitante_setor} onChange={e => update({ solicitante_setor: e.target.value })} />
-                    <datalist id="ti-setores">
-                      {SETORES.map(s => <option key={s} value={s} />)}
-                    </datalist>
-                  </Field>
-                  <Field label="Unidade / Filial">
-                    <input className="input" placeholder="Ex: São Paulo" value={form.solicitante_unidade} onChange={e => update({ solicitante_unidade: e.target.value })} />
-                  </Field>
+                  <SearchableSelect 
+                    label="Setor" 
+                    required 
+                    error={errors.solicitante_setor}
+                    value={form.solicitante_setor}
+                    options={setores.map(s => s.nome)}
+                    onChange={v => update({ solicitante_setor: v })}
+                    placeholder="Ex: Financeiro"
+                  />
+                  <SearchableSelect 
+                    label="Unidade / Filial" 
+                    required
+                    error={errors.solicitante_unidade}
+                    value={form.solicitante_unidade}
+                    options={unidades.map(u => u.nome)}
+                    onChange={v => update({ solicitante_unidade: v })}
+                    placeholder="Ex: São Paulo"
+                  />
                 </div>
 
-                <Field label="Ramal" hint="Opcional — para contato telefônico interno">
-                  <input className="input" placeholder="Ex: 1234" value={form.solicitante_ramal} onChange={e => update({ solicitante_ramal: e.target.value })} />
+                <Field label="Telefone / Ramal" required error={errors.solicitante_ramal} hint="Para contato telefônico se necessário">
+                  <input 
+                    className={`input${errors.solicitante_ramal ? ' input-error' : ''}`} 
+                    placeholder="(00) 00000-0000" 
+                    value={form.solicitante_ramal} 
+                    onChange={e => {
+                      let v = e.target.value.replace(/\D/g, '')
+                      if (v.length > 11) v = v.slice(0, 11)
+                      
+                      // Mascara: (99) 99999-9999 ou (99) 9999-9999
+                      if (v.length > 10) {
+                        v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3')
+                      } else if (v.length > 6) {
+                        v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3')
+                      } else if (v.length > 2) {
+                        v = v.replace(/^(\d{2})(\d{0,5}).*/, '($1) $2')
+                      } else if (v.length > 0) {
+                        v = v.replace(/^(\d{0,2}).*/, '($1')
+                      }
+                      update({ solicitante_ramal: v })
+                    }} 
+                  />
                 </Field>
               </div>
             </>
@@ -367,52 +479,38 @@ export default function AbrirChamadoPage() {
 
               <div style={{ display: 'grid', gap: '1.25rem' }}>
 
-                {/* Tipo */}
-                <div>
-                  <label className="label label-required">Tipo de chamado</label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {(['incidente', 'solicitacao', 'problema', 'mudanca'] as TiTipo[]).map(tipo => (
-                      <button key={tipo} type="button" onClick={() => update({ tipo })} style={{
-                        padding: '0.5rem 1rem', borderRadius: '999px',
-                        border: `1.5px solid ${form.tipo === tipo ? '#2563EB' : '#E5E7EB'}`,
-                        background: form.tipo === tipo ? '#EFF6FF' : 'transparent',
-                        color: form.tipo === tipo ? '#2563EB' : '#6B7280',
-                        fontWeight: form.tipo === tipo ? 600 : 400,
-                        fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.15s',
-                      }}>
-                        {TIPO_LABELS[tipo]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Categoria / Subcategoria */}
+
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <Field label="Categoria">
-                    <select className="input" value={form.categoria_id} onChange={e => update({ categoria_id: e.target.value, subcategoria_id: '' })}>
-                      <option value="">Selecione...</option>
-                      {rootCats.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Subcategoria">
-                    <select className="input" value={form.subcategoria_id} onChange={e => update({ subcategoria_id: e.target.value })} disabled={!form.categoria_id || subCats.length === 0}>
-                      <option value="">Selecione...</option>
-                      {subCats.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                    </select>
-                  </Field>
+                  <SearchableSelect 
+                    label="Categoria"
+                    value={rootCats.find(c => c.id === form.categoria_id)?.nome || ''}
+                    options={rootCats.map(c => c.nome)}
+                    onChange={nome => {
+                      const cat = rootCats.find(c => c.nome === nome)
+                      if (cat) update({ categoria_id: cat.id, subcategoria_id: '' })
+                    }}
+                    placeholder="Selecione..."
+                  />
+                  <SearchableSelect 
+                    label="Subcategoria"
+                    value={subCats.find(c => c.id === form.subcategoria_id)?.nome || ''}
+                    options={subCats.map(c => c.nome)}
+                    onChange={nome => {
+                      const cat = subCats.find(c => c.nome === nome)
+                      if (cat) update({ subcategoria_id: cat.id })
+                    }}
+                    placeholder="Selecione..."
+                    hint={!form.categoria_id ? 'Selecione uma categoria primeiro' : subCats.length === 0 ? 'Sem subcategorias' : ''}
+                  />
                 </div>
 
-                <Field label="Título do chamado" required error={errors.titulo} hint={`${form.titulo.length}/255 caracteres`}>
-                  <input className={`input${errors.titulo ? ' input-error' : ''}`} placeholder="Descreva brevemente o problema" value={form.titulo} onChange={e => update({ titulo: e.target.value })} maxLength={255} />
-                </Field>
 
                 <Field label="Descrição detalhada" required error={errors.descricao}>
                   <textarea className={`input${errors.descricao ? ' input-error' : ''}`} placeholder="Descreva o problema com o máximo de detalhes possível: o que aconteceu, quando começou, qual o impacto..." value={form.descricao} onChange={e => update({ descricao: e.target.value })} rows={4} />
                 </Field>
 
-                <Field label="Passos para reproduzir" hint="Opcional — como reproduzir o problema passo a passo">
-                  <textarea className="input" placeholder={'1. Abrir o sistema...\n2. Clicar em...\n3. O erro ocorre quando...'} value={form.passos_reproduzir} onChange={e => update({ passos_reproduzir: e.target.value })} rows={3} />
-                </Field>
 
                 <Field label="Equipamento afetado" hint="Opcional — hostname, patrimônio ou descrição do ativo">
                   <input className="input" placeholder="Ex: Notebook Dell Latitude / Impressora HP M401" value={form.ativo_descricao} onChange={e => update({ ativo_descricao: e.target.value })} />

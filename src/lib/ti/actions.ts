@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
 import type {
   CriarChamadoPayload,
@@ -10,10 +11,15 @@ import type {
   AccessCheckResult,
   TiStatus,
   TiPrioridade,
+  TiSlaConfig,
+  TiCategoria,
+  TiSetor,
+  TiUnidade
 } from './types'
 import { validateTransition, calcularPrazoSla, getPrazoHorasPadrao } from './workflow'
 import { TI_STORAGE_BUCKET } from './constants'
 import { sendTiEmail } from './email/transporter'
+
 import {
   emailChamadoAberto,
   emailChamadoAtribuido,
@@ -78,12 +84,31 @@ export async function criarChamadoAction(payload: CriarChamadoPayload) {
 
     const supabase = getAdminSupabase()
 
-    // Busca config de SLA
-    const prioridade: TiPrioridade = payload.prioridade || 'media'
+    // 1. Determina a prioridade baseada na severidade da categoria/subcategoria
+    let prioridade: TiPrioridade = payload.prioridade || 'media'
+    
+    // Busca informações da categoria/subcategoria
+    const targetId = payload.subcategoria_id || payload.categoria_id
+    if (targetId) {
+      const { data: catInfo } = await supabase
+        .from('ti_categorias')
+        .select('severidade')
+        .eq('id', targetId)
+        .single()
+      
+      if (catInfo?.severidade) {
+        prioridade = catInfo.severidade
+      }
+    }
+
+    // 2. Busca config de SLA baseada na prioridade definida
     let prazoHoras = getPrazoHorasPadrao(prioridade)
+    let horarioComercial = true
+    let slaEncontrado = false
 
     if (payload.categoria_id) {
-      const { data: slaConfig } = await supabase
+      // Tenta SLA específico da categoria selecionada
+      const { data: slaEspecifico } = await supabase
         .from('ti_sla_configs')
         .select('prazo_horas, horario_comercial')
         .eq('prioridade', prioridade)
@@ -91,23 +116,41 @@ export async function criarChamadoAction(payload: CriarChamadoPayload) {
         .eq('ativo', true)
         .maybeSingle()
 
-      if (slaConfig) prazoHoras = slaConfig.prazo_horas
+      if (slaEspecifico) {
+        prazoHoras = slaEspecifico.prazo_horas
+        horarioComercial = slaEspecifico.horario_comercial
+        slaEncontrado = true
+      }
     }
 
-    if (prazoHoras === 0) {
-      // Fallback genérico (sem categoria)
+    // Fallback Genérico (Geral)
+    if (!slaEncontrado) {
       const { data: slaGenerico } = await supabase
         .from('ti_sla_configs')
-        .select('prazo_horas')
+        .select('prazo_horas, horario_comercial')
         .eq('prioridade', prioridade)
         .is('categoria_id', null)
         .eq('ativo', true)
         .maybeSingle()
 
-      if (slaGenerico) prazoHoras = slaGenerico.prazo_horas
+      if (slaGenerico) {
+        prazoHoras = slaGenerico.prazo_horas
+        horarioComercial = slaGenerico.horario_comercial
+      }
     }
 
-    const slaPrazo = calcularPrazoSla(new Date(), prazoHoras)
+    const slaPrazo = calcularPrazoSla(new Date(), prazoHoras, horarioComercial)
+
+    // Determina o tipo baseado na categoria se não informado
+    let tipoFinal = payload.tipo || 'incidente'
+    if (payload.categoria_id) {
+      const { data: cat } = await supabase
+        .from('ti_categorias')
+        .select('tipo_padrao')
+        .eq('id', payload.categoria_id)
+        .single()
+      if (cat?.tipo_padrao) tipoFinal = cat.tipo_padrao
+    }
 
     // Insere o chamado
     const { data: chamado, error } = await supabase
@@ -121,10 +164,9 @@ export async function criarChamadoAction(payload: CriarChamadoPayload) {
         categoria_id:        payload.categoria_id ?? null,
         subcategoria_id:     payload.subcategoria_id ?? null,
         prioridade,
-        tipo:                payload.tipo || 'incidente',
-        titulo:              payload.titulo,
+        tipo:                tipoFinal,
+        titulo:              payload.descricao.slice(0, 100),
         descricao:           payload.descricao,
-        passos_reproduzir:   payload.passos_reproduzir ?? null,
         ativo_id:            payload.ativo_id ?? null,
         ativo_descricao:     payload.ativo_descricao ?? null,
         origem:              payload.origem || 'portal',
@@ -205,7 +247,7 @@ export async function transicionarStatusAction(payload: TransicaoStatusPayload) 
     if (payload.motivo_cancelamento)  updateData.motivo_cancelamento = payload.motivo_cancelamento
 
     // Fechamento
-    if (['fechado', 'fechado_automatico', 'cancelado'].includes(payload.novo_status)) {
+    if (['fechado', 'fechado_automatico', 'cancelado', 'resolvido'].includes(payload.novo_status)) {
       updateData.fechado_em  = new Date().toISOString()
       updateData.fechado_por = payload.realizado_por
     }
@@ -214,6 +256,22 @@ export async function transicionarStatusAction(payload: TransicaoStatusPayload) 
     if (payload.novo_status === 'reaberto') {
       updateData.fechado_em  = null
       updateData.fechado_por = null
+    }
+
+    // Lógica de SLA (Pausa)
+    const { shouldPauseSla } = await import('./workflow')
+    const eraPausado = shouldPauseSla(chamado.status as TiStatus)
+    const vaiPausar = shouldPauseSla(payload.novo_status)
+
+    if (!eraPausado && vaiPausar) {
+      updateData.sla_pausado_em = new Date().toISOString()
+    } else if (eraPausado && !vaiPausar && chamado.sla_pausado_em) {
+      const inicio = new Date(chamado.sla_pausado_em)
+      const fim = new Date()
+      const diffHoras = (fim.getTime() - inicio.getTime()) / (1000 * 60 * 60)
+      
+      updateData.sla_pausado_em = null
+      updateData.sla_horas_pausadas = Math.round((chamado.sla_horas_pausadas || 0) + diffHoras)
     }
 
     // Executa update
@@ -293,7 +351,7 @@ export async function atribuirChamadoAction(payload: AtribuirChamadoPayload) {
     // Notifica técnico se atribuído
     if (payload.tecnico_id) {
       const { data: tecnico } = await supabase
-        .from('ti_tecnicos')
+        .from('ti_access_users')
         .select('email, nome')
         .eq('id', payload.tecnico_id)
         .single()
@@ -323,6 +381,7 @@ export async function escalarChamadoAction(payload: EscalarChamadoPayload) {
       nivel_suporte: payload.nivel_destino,
       escalado_em:   new Date().toISOString(),
       escalado_por:  payload.escalado_por,
+      sla_pausado_em: new Date().toISOString(),
     }
 
     if (payload.equipe_destino_id) {
@@ -388,6 +447,43 @@ export async function adicionarComentarioAction(payload: AdicionarComentarioPayl
     return { success: true, comentario }
   } catch (err: any) {
     console.error('[adicionarComentario]', err)
+    return { success: false, error: err.message }
+  }
+}
+
+// ============================================================
+// CONTATO VIA WHATSAPP — Registra na timeline
+// ============================================================
+export async function registrarContatoWhatsappAction(payload: {
+  chamado_id: string
+  autor_nome: string
+  autor_email: string
+  numero: string
+}) {
+  try {
+    const supabase = getAdminSupabase()
+
+    const { data: chamado } = await supabase
+      .from('ti_chamados')
+      .select('numero, titulo, categoria:categoria_id(nome), subcategoria:subcategoria_id(nome)')
+      .eq('id', payload.chamado_id)
+      .single()
+
+    const cat    = (chamado?.categoria as any)?.nome    ?? '—'
+    const subcat = (chamado?.subcategoria as any)?.nome ?? '—'
+
+    await supabase.from('ti_comentarios').insert({
+      chamado_id:  payload.chamado_id,
+      autor_nome:  payload.autor_nome,
+      autor_email: payload.autor_email,
+      conteudo:    `[Contato via WhatsApp] Número: ${payload.numero} | Chamado: ${chamado?.numero} | Categoria: ${cat} | Subcategoria: ${subcat}`,
+      interno:     true,
+    })
+
+    revalidatePath(`/ti/chamado/${payload.chamado_id}`)
+    return { success: true }
+  } catch (err: any) {
+    console.error('[registrarContatoWhatsapp]', err)
     return { success: false, error: err.message }
   }
 }
@@ -515,7 +611,7 @@ export async function buscarChamadosAction(filtros: {
 
     if (filtros.assignee === 'mine' && filtros.userEmail) {
       const { data: tec } = await supabase
-        .from('ti_tecnicos').select('id').eq('email', filtros.userEmail).maybeSingle()
+        .from('ti_access_users').select('id').eq('email', filtros.userEmail).maybeSingle()
       if (tec) query = query.eq('tecnico_id', tec.id)
     } else if (filtros.assignee === 'unassigned') {
       query = query.is('tecnico_id', null)
@@ -569,10 +665,20 @@ export async function buscarChamadoPorIdAction(id: string) {
 
     if (error) throw error
 
-    const [{ data: eventos }, { data: comentarios }, { data: anexos }] = await Promise.all([
+    const [
+      { data: eventos },
+      { data: comentarios },
+      { data: anexos },
+      { data: fieldLogs },
+      { data: usuarios },
+      { data: equipes }
+    ] = await Promise.all([
       supabase.from('ti_workflow_events').select('*').eq('chamado_id', id).order('created_at'),
       supabase.from('ti_comentarios').select('*').eq('chamado_id', id).order('created_at'),
       supabase.from('ti_anexos').select('*').eq('chamado_id', id).is('deleted_at', null).order('created_at'),
+      supabase.from('ti_field_change_logs').select('*').eq('chamado_id', id).order('created_at'),
+      supabase.from('ti_access_users').select('id, nome'),
+      supabase.from('ti_equipes').select('id, nome'),
     ])
 
     return {
@@ -581,6 +687,9 @@ export async function buscarChamadoPorIdAction(id: string) {
       eventos:     eventos ?? [],
       comentarios: comentarios ?? [],
       anexos:      anexos ?? [],
+      fieldLogs:   fieldLogs ?? [],
+      usuarios:    usuarios ?? [],
+      equipes:     equipes ?? [],
     }
   } catch (err: any) {
     console.error('[buscarChamadoPorId]', err)
@@ -621,13 +730,29 @@ export async function buscarEquipesAction() {
   }
 }
 
+export async function buscarAnalistasAtivosAction() {
+  try {
+    const supabase = getAdminSupabase()
+    const { data, error } = await supabase
+      .from('ti_access_users')
+      .select('id, nome, email')
+      .in('perfil', ['tecnico', 'gestor_ti', 'admin'])
+      .eq('ativo', true)
+      .order('nome')
+    if (error) throw error
+    return { success: true, analistas: data ?? [] }
+  } catch (err: any) {
+    return { success: false, analistas: [], error: err.message }
+  }
+}
+
 // ============================================================
 // DASHBOARD — Estatísticas rápidas
 // ============================================================
 export async function buscarStatsDashboard() {
   try {
     const supabase = getAdminSupabase()
-    const ATIVOS = ['aberto', 'em_atendimento', 'pendente_usuario', 'pendente_terceiro', 'escalado', 'reaberto']
+    const ATIVOS = ['aberto', 'em_atendimento', 'reaberto']
 
     const [rTotal, rAbertos, rEmAtendimento, rSlaViolados] = await Promise.all([
       supabase.from('ti_chamados').select('*', { count: 'exact', head: true }).in('status', ATIVOS),
@@ -774,26 +899,17 @@ export async function buscarSlaConfigsAction() {
     const supabase = getAdminSupabase()
     const { data, error } = await supabase
       .from('ti_sla_configs')
-      .select('*, categoria:categoria_id(id, nome)')
+      .select('*, categoria:ti_categorias(id, nome, categoria_pai, pai:categoria_pai(nome))')
       .order('prioridade')
       .order('prazo_horas')
     if (error) throw error
-    return { success: true, configs: data ?? [] }
+    return { success: true, configs: (data || []) as (TiSlaConfig & { categoria: { nome: string } })[] }
   } catch (err: any) {
     return { success: false, configs: [], error: err.message }
   }
 }
 
-export async function salvarSlaConfigAction(payload: {
-  id?: string
-  prioridade: string
-  categoria_id?: string | null
-  prazo_horas: number
-  horario_comercial: boolean
-  alerta_pct_70: boolean
-  alerta_pct_90: boolean
-  ativo: boolean
-}) {
+export async function salvarSlaConfigAction(payload: Partial<TiSlaConfig>) {
   try {
     const supabase = getAdminSupabase()
     const { id, ...rest } = payload
@@ -807,7 +923,14 @@ export async function salvarSlaConfigAction(payload: {
     } else {
       const { error } = await supabase
         .from('ti_sla_configs')
-        .insert({ ...rest, categoria_id: rest.categoria_id ?? null })
+        .insert([{ 
+          ...rest, 
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          alerta_pct_70: rest.alerta_pct_70 ?? true,
+          alerta_pct_90: rest.alerta_pct_90 ?? true,
+          ativo: rest.ativo ?? true
+        }])
       if (error) throw error
     }
     return { success: true }
@@ -819,21 +942,38 @@ export async function salvarSlaConfigAction(payload: {
 // ============================================================
 // ANALYTICS — Dashboard analítico
 // ============================================================
-export async function buscarAnalyticsAction(periodo: '7d' | '30d' | '90d' | '365d') {
+export async function buscarAnalyticsAction(
+  periodo: '7d' | '30d' | '90d' | '365d',
+  filtros?: { categoria_id?: string; tecnico_id?: string; dataInicio?: string; dataFim?: string }
+) {
   try {
     const supabase = getAdminSupabase()
-    const dias = { '7d': 7, '30d': 30, '90d': 90, '365d': 365 }[periodo]
-    const inicio = new Date(Date.now() - dias * 24 * 60 * 60 * 1000)
-    const inicioISO = inicio.toISOString()
 
-    const STATUS_ATIVOS = ['aberto', 'em_atendimento', 'pendente_usuario', 'pendente_terceiro', 'reaberto', 'escalonado_n2', 'escalonado_n3']
+    // Range customizado tem prioridade sobre o período pré-definido
+    const dias = { '7d': 7, '30d': 30, '90d': 90, '365d': 365 }[periodo]
+    let inicioISO: string
+    let fimISO: string | null = null
+    if (filtros?.dataInicio) {
+      inicioISO = new Date(filtros.dataInicio).toISOString()
+      fimISO    = filtros.dataFim ? new Date(filtros.dataFim + 'T23:59:59').toISOString() : null
+    } else {
+      inicioISO = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString()
+    }
+
+    const STATUS_ATIVOS = ['aberto', 'em_atendimento', 'pendente_usuario', 'pendente_terceiro', 'reaberto', 'escalado']
+
+    let chamadosQuery = supabase
+      .from('ti_chamados')
+      .select('id, numero, titulo, status, prioridade, tipo, created_at, fechado_em, updated_at, sla_violado, solicitante_nome, solicitante_setor, categoria:categoria_id(nome), equipe:equipe_id(nome), tecnico:tecnico_id(id, nome, email)')
+      .gte('created_at', inicioISO)
+      .order('created_at')
+
+    if (fimISO)                chamadosQuery = chamadosQuery.lte('created_at', fimISO)
+    if (filtros?.categoria_id) chamadosQuery = chamadosQuery.eq('categoria_id', filtros.categoria_id)
+    if (filtros?.tecnico_id)   chamadosQuery = chamadosQuery.eq('tecnico_id',   filtros.tecnico_id)
 
     const [chamadosRes, emAbertoRes] = await Promise.all([
-      supabase
-        .from('ti_chamados')
-        .select('id, numero, titulo, status, prioridade, tipo, created_at, fechado_em, sla_violado, solicitante_nome, solicitante_setor, categoria:categoria_id(nome), equipe:equipe_id(nome)')
-        .gte('created_at', inicioISO)
-        .order('created_at'),
+      chamadosQuery,
       supabase
         .from('ti_chamados')
         .select('id', { count: 'exact', head: true })
@@ -890,10 +1030,16 @@ export async function buscarAnalyticsAction(periodo: '7d' | '30d' | '90d' | '365
     ]
 
     // Tendência temporal (diária / semanal / mensal)
+    const STATUS_ENCERRADOS_TEND = ['resolvido', 'fechado', 'fechado_automatico']
+    // Data de encerramento: fechado_em se existir, senão updated_at como fallback
+    function dataEnc(c: any): string | null {
+      if (!STATUS_ENCERRADOS_TEND.includes(c.status)) return null
+      return c.fechado_em ?? c.updated_at ?? null
+    }
+
     let tendencia: { label: string; abertos: number; fechados: number }[] = []
 
     if (periodo === '365d') {
-      // Mensal — últimos 12 meses
       const monthMap = new Map<string, { abertos: number; fechados: number }>()
       for (let i = 11; i >= 0; i--) {
         const d = new Date()
@@ -904,27 +1050,27 @@ export async function buscarAnalyticsAction(periodo: '7d' | '30d' | '90d' | '365
       chamados.forEach((c: any) => {
         const key = String(c.created_at).slice(0, 7)
         const e = monthMap.get(key); if (e) e.abertos++
-        if (c.fechado_em) { const f = monthMap.get(String(c.fechado_em).slice(0, 7)); if (f) f.fechados++ }
+        const enc = dataEnc(c)
+        if (enc) { const f = monthMap.get(String(enc).slice(0, 7)); if (f) f.fechados++ }
       })
       tendencia = Array.from(monthMap.entries()).map(([label, v]) => ({ label, ...v }))
 
     } else if (periodo === '90d') {
-      // Semanal — últimas 13 semanas (início de cada semana)
       const weekStarts: string[] = []
       for (let i = 12; i >= 0; i--) {
         const d = new Date(Date.now() - i * 7 * 86_400_000)
         weekStarts.push(d.toISOString().split('T')[0])
       }
       const weekMap = new Map(weekStarts.map(k => [k, { abertos: 0, fechados: 0 }]))
-
       function findWeek(dateStr: string) {
         return weekStarts.filter(k => k <= dateStr).at(-1)
       }
       chamados.forEach((c: any) => {
         const wk = findWeek(String(c.created_at).split('T')[0])
         if (wk) { const e = weekMap.get(wk); if (e) e.abertos++ }
-        if (c.fechado_em) {
-          const fwk = findWeek(String(c.fechado_em).split('T')[0])
+        const enc = dataEnc(c)
+        if (enc) {
+          const fwk = findWeek(String(enc).split('T')[0])
           if (fwk) { const f = weekMap.get(fwk); if (f) f.fechados++ }
         }
       })
@@ -933,7 +1079,6 @@ export async function buscarAnalyticsAction(periodo: '7d' | '30d' | '90d' | '365
         .map(([label, v]) => ({ label, ...v }))
 
     } else {
-      // Diário (7d ou 30d)
       const dayMap = new Map<string, { abertos: number; fechados: number }>()
       for (let i = dias - 1; i >= 0; i--) {
         const key = new Date(Date.now() - i * 86_400_000).toISOString().split('T')[0]
@@ -942,7 +1087,8 @@ export async function buscarAnalyticsAction(periodo: '7d' | '30d' | '90d' | '365
       chamados.forEach((c: any) => {
         const key = String(c.created_at).split('T')[0]
         const e = dayMap.get(key); if (e) e.abertos++
-        if (c.fechado_em) { const f = dayMap.get(String(c.fechado_em).split('T')[0]); if (f) f.fechados++ }
+        const enc = dataEnc(c)
+        if (enc) { const f = dayMap.get(String(enc).split('T')[0]); if (f) f.fechados++ }
       })
       tendencia = Array.from(dayMap.entries())
         .sort(([a], [b]) => a.localeCompare(b))
@@ -956,6 +1102,77 @@ export async function buscarAnalyticsAction(periodo: '7d' | '30d' | '90d' | '365
   } catch (err: any) {
     console.error('[buscarAnalytics]', err)
     return { success: false, error: err.message, data: null }
+  }
+}
+
+// ============================================================
+// EXPORTAÇÃO — Todos os campos para relatório
+// ============================================================
+export async function exportarChamadosAction(filtros: {
+  status?: string[]
+  prioridade?: string[]
+  equipe_id?: string
+  tecnico_id?: string
+  categoria_id?: string
+  solicitante_email?: string
+  search?: string
+  userEmail?: string
+  assignee?: string
+  dataInicio?: string
+  dataFim?: string
+}) {
+  try {
+    const supabase = getAdminSupabase()
+
+    let query = supabase
+      .from('ti_chamados')
+      .select(`
+        id, numero, titulo, prioridade, tipo, status, origem, nivel_suporte,
+        solicitante_nome, solicitante_email, solicitante_ramal,
+        solicitante_setor, solicitante_unidade,
+        sla_prazo, sla_violado, sla_violado_em, sla_horas_pausadas,
+        escalado_em, escalado_por,
+        solucao, causa_raiz, motivo_cancelamento,
+        fechado_em, fechado_por,
+        satisfacao_nota, satisfacao_comentario, satisfacao_respondido_em,
+        tags, ip_abertura,
+        created_at, updated_at,
+        categoria:categoria_id(id, nome),
+        subcategoria:subcategoria_id(id, nome),
+        equipe:equipe_id(id, nome),
+        tecnico:tecnico_id(id, nome, email)
+      `)
+
+    if (filtros.status?.length)     query = query.in('status', filtros.status)
+    if (filtros.prioridade?.length) query = query.in('prioridade', filtros.prioridade)
+    if (filtros.equipe_id)          query = query.eq('equipe_id', filtros.equipe_id)
+    if (filtros.tecnico_id)         query = query.eq('tecnico_id', filtros.tecnico_id)
+    if (filtros.categoria_id)       query = query.eq('categoria_id', filtros.categoria_id)
+    if (filtros.solicitante_email)  query = query.eq('solicitante_email', filtros.solicitante_email.toLowerCase())
+
+    if (filtros.assignee === 'mine' && filtros.userEmail) {
+      const { data: tec } = await supabase
+        .from('ti_access_users').select('id').eq('email', filtros.userEmail).maybeSingle()
+      if (tec) query = query.eq('tecnico_id', tec.id)
+    } else if (filtros.assignee === 'unassigned') {
+      query = query.is('tecnico_id', null)
+    }
+
+    if (filtros.search) {
+      query = query.or(
+        `numero.ilike.%${filtros.search}%,titulo.ilike.%${filtros.search}%,solicitante_nome.ilike.%${filtros.search}%,solicitante_email.ilike.%${filtros.search}%`
+      )
+    }
+
+    if (filtros.dataInicio) query = query.gte('created_at', new Date(filtros.dataInicio).toISOString())
+    if (filtros.dataFim)    query = query.lte('created_at', new Date(filtros.dataFim + 'T23:59:59').toISOString())
+
+    const { data, error } = await query.order('created_at', { ascending: false })
+    if (error) throw error
+    return { success: true, chamados: data ?? [] }
+  } catch (err: any) {
+    console.error('[exportarChamados]', err)
+    return { success: false, error: err.message, chamados: [] }
   }
 }
 
@@ -1128,68 +1345,6 @@ export async function salvarEquipeAdminAction(equipe: { id?: string, nome: strin
   }
 }
 
-export async function buscarTecnicosAdminAction(params: { search?: string, equipe_id?: string, ativo?: boolean, page: number }) {
-  try {
-    const supabase = getAdminSupabase()
-    let query = supabase.from('ti_tecnicos').select('*, equipe:ti_equipes(*)', { count: 'exact' })
-    
-    if (params.search) {
-      query = query.or(`nome.ilike.%${params.search}%,email.ilike.%${params.search}%`)
-    }
-    if (params.equipe_id) {
-      query = query.eq('equipe_id', params.equipe_id)
-    }
-    if (params.ativo !== undefined) {
-      query = query.eq('ativo', params.ativo)
-    }
-    
-    const pageSize = 15
-    const from = (params.page - 1) * pageSize
-    const to = from + pageSize - 1
-    
-    const { data, error, count } = await query.order('nome').range(from, to)
-    if (error) throw error
-    
-    return { 
-      success: true, 
-      tecnicos: data ?? [],
-      total: count ?? 0,
-      totalPages: count ? Math.ceil(count / pageSize) : 1
-    }
-  } catch (err: any) {
-    return { success: false, error: err.message, tecnicos: [], total: 0, totalPages: 1 }
-  }
-}
-
-export async function salvarTecnicoAdminAction(tecnico: { id?: string, email: string, nome: string, cargo?: string, equipe_id?: string, ramal?: string, ativo: boolean }) {
-  try {
-    const supabase = getAdminSupabase()
-    
-    const payload = {
-      email: tecnico.email.toLowerCase(),
-      nome: tecnico.nome,
-      cargo: tecnico.cargo || null,
-      equipe_id: tecnico.equipe_id || null,
-      ramal: tecnico.ramal || null,
-      ativo: tecnico.ativo,
-      updated_at: new Date().toISOString()
-    }
-
-    let result;
-    if (tecnico.id) {
-      result = await supabase.from('ti_tecnicos').update(payload).eq('id', tecnico.id)
-    } else {
-      result = await supabase.from('ti_tecnicos').insert([payload])
-    }
-    
-    if (result.error) throw result.error
-    
-    return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message }
-  }
-}
-
 // ============================================================
 // ADMIN: ATIVOS DE T.I
 // ============================================================
@@ -1227,10 +1382,59 @@ export async function buscarAtivosAdminAction(params: { search?: string, tipo?: 
   }
 }
 
+export async function buscarStatsAtivosAction() {
+  try {
+    const supabase = getAdminSupabase()
+    const { data, error } = await supabase
+      .from('ti_ativos')
+      .select('tipo, status, valor_compra')
+    if (error) throw error
+    const total      = data?.length ?? 0
+    const notebook   = data?.filter((a: any) => a.tipo === 'notebook').length   ?? 0
+    const monitor    = data?.filter((a: any) => a.tipo === 'monitor').length    ?? 0
+    const computador = data?.filter((a: any) => a.tipo === 'computador').length ?? 0
+    const manutencao = data?.filter((a: any) => a.status === 'manutencao').length ?? 0
+    const emUso      = data?.filter((a: any) => a.status === 'ativo').length ?? 0
+    const disponiveis = data?.filter((a: any) => a.status === 'reserva').length ?? 0
+    const valorTotal = data?.reduce((s: number, a: any) => s + (Number(a.valor_compra) || 0), 0) ?? 0
+
+    return { 
+      success: true, 
+      stats: { total, notebook, monitor, computador, manutencao, emUso, disponiveis, valorTotal } 
+    }
+  } catch (err: any) {
+    return { success: false, stats: null, error: err.message }
+  }
+}
+
+export async function importarAtivosAdminAction(ativos: any[]) {
+  try {
+    const supabase = getAdminSupabase()
+    const payload = ativos.map(a => ({
+      nome:         a.nome,
+      tipo:         a.tipo         || 'outros',
+      fabricante:   a.fabricante   || null,
+      modelo:       a.modelo       || null,
+      numero_serie: a.numero_serie || null,
+      setor:        a.setor        || null,
+      responsavel:  a.responsavel  || null,
+      valor_compra: a.valor_compra ? Number(a.valor_compra) : null,
+      imei:         a.imei         || null,
+      status:       a.status       || 'ativo',
+      updated_at:   new Date().toISOString(),
+    }))
+    const { error } = await supabase.from('ti_ativos').insert(payload)
+    if (error) throw error
+    return { success: true, count: payload.length }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
 export async function salvarAtivoAdminAction(ativo: any) {
   try {
     const supabase = getAdminSupabase()
-    
+
     const payload = {
       ...ativo,
       updated_at: new Date().toISOString()
@@ -1453,6 +1657,366 @@ export async function salvarSatisfacaoConfigAction(config: { id: string, ativa: 
     
     if (error) throw error
     
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+// ============================================================
+// ADMIN: PERFIS DE ACESSO (DYNAMIC PROFILES)
+// ============================================================
+
+export async function buscarPerfisAction() {
+  try {
+    const supabase = getAdminSupabase()
+    const { data, error } = await supabase
+      .from('ti_profiles')
+      .select('*')
+      .order('ordem')
+    if (error) throw error
+    return { success: true, perfis: data ?? [] }
+  } catch (err: any) {
+    return { success: false, perfis: [], error: err.message }
+  }
+}
+
+export async function salvarPerfilAction(payload: {
+  id?: string
+  slug: string
+  nome: string
+  descricao?: string
+  cor?: string
+  icone?: string
+  ordem?: number
+}) {
+  try {
+    const supabase = getAdminSupabase()
+    const { id, ...rest } = payload
+    
+    if (id) {
+      const { error } = await supabase
+        .from('ti_profiles')
+        .update({ ...rest, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+      return { success: true }
+    } else {
+      const { data, error } = await supabase
+        .from('ti_profiles')
+        .insert(rest)
+        .select('id')
+        .single()
+      if (error) throw error
+      return { success: true, id: data.id }
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+export async function excluirPerfilAction(id: string) {
+  try {
+    const supabase = getAdminSupabase()
+    
+    // Check if any users are using this profile
+    const { data: perfilData } = await supabase.from('ti_profiles').select('slug').eq('id', id).single()
+    if (perfilData) {
+      // 1. Check if any users are using this profile
+      const { count } = await supabase
+        .from('ti_access_users')
+        .select('*', { count: 'exact', head: true })
+        .eq('perfil', perfilData.slug)
+      
+      if (count && count > 0) {
+        throw new Error(`Não é possível excluir este perfil porque existem ${count} usuários vinculados a ele. Primeiro, altere o perfil desses usuários.`)
+      }
+
+      // 2. Delete permissions associated with this profile
+      const { error: permError } = await supabase
+        .from('ti_profile_permissions')
+        .delete()
+        .eq('perfil', perfilData.slug)
+      
+      if (permError) throw permError
+    }
+
+    // 3. Finally delete the profile
+    const { error } = await supabase.from('ti_profiles').delete().eq('id', id)
+    if (error) throw error
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+// ============================================================
+// GESTÃO DE CATÁLOGOS (Categorias, Setores, Unidades)
+// ============================================================
+
+/**
+ * Busca todos os dados para a tela de administração de catálogos
+ */
+export async function buscarDadosCatalogosAction() {
+  try {
+    const supabase = getAdminSupabase()
+    
+    const [cats, setores, unidades] = await Promise.all([
+      supabase.from('ti_categorias').select('*').order('categoria_pai', { nullsFirst: true }).order('ordem'),
+      supabase.from('ti_setores').select('*').order('nome'),
+      supabase.from('ti_unidades').select('*').order('nome')
+    ])
+
+    if (cats.error) throw cats.error
+    if (setores.error) throw setores.error
+    if (unidades.error) throw unidades.error
+
+    return { 
+      success: true, 
+      categorias: cats.data, 
+      setores: setores.data, 
+      unidades: unidades.data 
+    }
+  } catch (err: any) {
+    return { 
+      success: false, 
+      error: err.message,
+      categorias: [],
+      setores: [],
+      unidades: []
+    }
+  }
+}
+
+/**
+ * Busca dados simplificados e ativos para o formulário de abertura (público)
+ */
+export async function buscarCatalogosPublicosAction() {
+  try {
+    const supabase = getAdminSupabase() // Usamos admin para garantir bypass de RLS se necessário, ou client normal
+    const [cats, setores, unidades] = await Promise.all([
+      supabase.from('ti_categorias').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('ti_setores').select('*').eq('ativo', true).order('nome'),
+      supabase.from('ti_unidades').select('*').eq('ativo', true).order('nome')
+    ])
+    return { 
+      success: true, 
+      categorias: cats.data || [], 
+      setores: setores.data || [], 
+      unidades: unidades.data || [] 
+    }
+  } catch (err: any) {
+    return { 
+      success: false, 
+      error: err.message,
+      categorias: [],
+      setores: [],
+      unidades: []
+    }
+  }
+}
+
+/**
+ * Salva ou atualiza uma categoria e opcionalmente suas subcategorias
+ */
+export async function salvarCategoriaCompletaAction(
+  parent: Partial<TiCategoria>,
+  children: Partial<TiCategoria>[] = []
+) {
+  try {
+    const supabase = getAdminSupabase()
+
+    // 1. Upsert na categoria pai
+    const { data: savedParent, error: pError } = await supabase
+      .from('ti_categorias')
+      .upsert({ ...parent }, { onConflict: 'id' })
+      .select()
+      .single()
+
+    if (pError) throw pError
+
+    // 2. Busca filhos existentes para calcular diff (delete dos removidos)
+    const { data: existingChildren } = await supabase
+      .from('ti_categorias')
+      .select('id, nome')
+      .eq('categoria_pai', savedParent.id)
+
+    const existingNames = new Set((existingChildren ?? []).map((c: any) => c.nome))
+    const incomingNames = new Set(children.map(c => c.nome))
+
+    // Deleta subcategorias removidas pelo usuário
+    const toDelete = (existingChildren ?? []).filter((c: any) => !incomingNames.has(c.nome))
+    if (toDelete.length > 0) {
+      const { error: dError } = await supabase
+        .from('ti_categorias')
+        .delete()
+        .in('id', toDelete.map((c: any) => c.id))
+      if (dError) throw dError
+    }
+
+    // Insere apenas as subcategorias novas (que não existiam pelo nome)
+    const toInsert = children
+      .filter(c => !existingNames.has(c.nome))
+      .map(c => ({
+        nome: c.nome,
+        slug: c.slug,
+        ordem: c.ordem ?? 0,
+        ativo: c.ativo ?? true,
+        categoria_pai: savedParent.id,
+        tipo_padrao: c.tipo_padrao || savedParent.tipo_padrao || 'incidente',
+      }))
+
+    if (toInsert.length > 0) {
+      const { error: cError } = await supabase
+        .from('ti_categorias')
+        .insert(toInsert)
+      if (cError) throw cError
+    }
+
+    revalidatePath('/ti/admin/catalogos')
+    return { success: true, id: savedParent.id }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Altera o status (ativo/inativo) de qualquer registro de catálogo
+ */
+export async function alternarStatusCatalogoAction(
+  table: 'ti_categorias' | 'ti_setores' | 'ti_unidades',
+  id: string,
+  ativo: boolean
+) {
+  try {
+    const supabase = getAdminSupabase()
+    const { error } = await supabase
+      .from(table)
+      .update({ ativo } as any)
+      .eq('id', id)
+
+    if (error) throw error
+
+    // Se for uma categoria pai sendo inativada, inativar filhos também
+    if (table === 'ti_categorias' && !ativo) {
+       await supabase
+        .from('ti_categorias')
+        .update({ ativo: false })
+        .eq('categoria_pai', id)
+    }
+
+    revalidatePath('/ti/admin/catalogos')
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Salva ou atualiza um setor
+ */
+export async function salvarSetorAction(data: { id?: string; nome: string; ativo?: boolean }) {
+  try {
+    const supabase = getAdminSupabase()
+    const { error } = await supabase
+      .from('ti_setores')
+      .upsert(data)
+
+    if (error) throw error
+    revalidatePath('/ti/admin/catalogos')
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Salva ou atualiza uma unidade
+ */
+export async function salvarUnidadeAction(data: { id?: string; nome: string; ativo?: boolean }) {
+  try {
+    const supabase = getAdminSupabase()
+    const { error } = await supabase
+      .from('ti_unidades')
+      .upsert(data)
+
+    if (error) throw error
+    revalidatePath('/ti/admin/catalogos')
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Atualiza apenas a severidade de uma categoria (usado na matriz de SLA simplificada)
+ */
+export async function alterarCategoriaAction(payload: {
+  chamado_id: string
+  categoria_id: string | null
+  subcategoria_id: string | null
+  justificativa: string
+  alterado_por: string
+}) {
+  try {
+    const supabase = getAdminSupabase()
+
+    // Busca valores atuais para registrar no log
+    const { data: chamado, error: fetchErr } = await supabase
+      .from('ti_chamados')
+      .select('categoria_id, subcategoria_id')
+      .eq('id', payload.chamado_id)
+      .single()
+
+    if (fetchErr) throw fetchErr
+
+    const logs: Array<{ campo: string; valor_antigo: string | null; valor_novo: string | null }> = []
+
+    if (chamado.categoria_id !== payload.categoria_id) {
+      logs.push({ campo: 'categoria_id', valor_antigo: chamado.categoria_id, valor_novo: payload.categoria_id })
+    }
+    if (chamado.subcategoria_id !== payload.subcategoria_id) {
+      logs.push({ campo: 'subcategoria_id', valor_antigo: chamado.subcategoria_id, valor_novo: payload.subcategoria_id })
+    }
+
+    if (logs.length === 0) return { success: true }
+
+    await supabase
+      .from('ti_chamados')
+      .update({ categoria_id: payload.categoria_id, subcategoria_id: payload.subcategoria_id, updated_at: new Date().toISOString() })
+      .eq('id', payload.chamado_id)
+
+    await supabase.from('ti_field_change_logs').insert(
+      logs.map(l => ({ ...l, chamado_id: payload.chamado_id, alterado_por: payload.alterado_por }))
+    )
+
+    // Registra justificativa como comentário interno
+    await supabase.from('ti_comentarios').insert({
+      chamado_id:  payload.chamado_id,
+      autor_nome:  payload.alterado_por,
+      autor_email: payload.alterado_por,
+      conteudo:    `[Alteração de classificação] ${payload.justificativa}`,
+      interno:     true,
+    })
+
+    revalidatePath(`/ti/chamado/${payload.chamado_id}`)
+    return { success: true }
+  } catch (err: any) {
+    console.error('[alterarCategoria]', err)
+    return { success: false, error: err.message }
+  }
+}
+
+export async function atualizarSeveridadeCategoriaAction(id: string, severidade: TiPrioridade | null) {
+  try {
+    const supabase = getAdminSupabase()
+    const { error } = await supabase
+      .from('ti_categorias')
+      .update({ severidade })
+      .eq('id', id)
+
+    if (error) throw error
+    revalidatePath('/ti/admin/catalogos')
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }

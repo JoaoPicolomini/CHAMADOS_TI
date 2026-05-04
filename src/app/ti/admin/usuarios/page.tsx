@@ -9,12 +9,12 @@ import {
   Edit2, Check, AlertCircle, Shield
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { checkTiUserAccess, buscarUsuariosAdminAction, salvarUsuarioAdminAction, importarUsuariosAdminAction } from '@/lib/ti/actions'
+import { checkTiUserAccess, buscarUsuariosAdminAction, salvarUsuarioAdminAction, importarUsuariosAdminAction, buscarPerfisAction } from '@/lib/ti/actions'
 
 const NAVY = '#1E3A5F'
 const BLUE = '#2563EB'
 const BG   = '#F5F7FA'
-const PERFIS = ['user', 'tecnico', 'gestor_ti', 'admin']
+// PERFIS agora são carregados dinamicamente
 
 export default function UsuariosAdminPage() {
   const router = useRouter()
@@ -29,6 +29,7 @@ export default function UsuariosAdminPage() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [perfis, setPerfis] = useState<any[]>([])
   
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -68,7 +69,14 @@ export default function UsuariosAdminPage() {
     setLoading(false)
   }, [search, perfilFilter, page])
 
-  useEffect(() => { if (authReady) carregar() }, [authReady, carregar])
+  useEffect(() => {
+    if (authReady) {
+      carregar()
+      buscarPerfisAction().then(res => {
+        if (res.success) setPerfis(res.perfis)
+      })
+    }
+  }, [authReady, carregar])
   useEffect(() => { setPage(1) }, [search, perfilFilter])
 
   function handleSearch() {
@@ -229,7 +237,7 @@ export default function UsuariosAdminPage() {
             style={{ padding: '9px 12px', border: '1px solid #D1D5DB', borderRadius: 7, fontSize: '0.875rem', outline: 'none', background: 'white', minWidth: 150 }}
           >
             <option value="">Todos os perfis</option>
-            {PERFIS.map(p => <option key={p} value={p}>{p}</option>)}
+            {perfis.map(p => <option key={p.slug} value={p.slug}>{p.nome}</option>)}
           </select>
           
           {(search || perfilFilter) && (
@@ -378,7 +386,7 @@ export default function UsuariosAdminPage() {
                       onChange={e => setFormData({...formData, perfil: e.target.value})}
                       style={{ width: '100%', padding: '8px 12px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.9rem', outline: 'none', background: 'white' }}
                     >
-                      {PERFIS.map(p => <option key={p} value={p}>{p}</option>)}
+                      {perfis.map(p => <option key={p.slug} value={p.slug}>{p.nome}</option>)}
                     </select>
                   </div>
                   

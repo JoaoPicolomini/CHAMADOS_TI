@@ -11,12 +11,12 @@ export const TI_STORAGE_BUCKET = 'ti-attachments'
 export const STATUS_LABELS: Record<TiStatus, string> = {
   aberto:             'Aberto',
   em_atendimento:     'Em Atendimento',
-  pendente_usuario:   'Pendente — Usuário',
-  pendente_terceiro:  'Pendente — Terceiro',
+  pendente_usuario:   'Aguardando Usuário',
+  pendente_terceiro:  'Aguardando Terceiros',
   escalado:           'Escalado',
-  resolvido:          'Resolvido',
-  fechado:            'Fechado',
-  fechado_automatico: 'Fechado Automaticamente',
+  resolvido:          'Encerrado / Resolvido',
+  fechado:            'Encerrado / Resolvido',
+  fechado_automatico: 'Encerrado / Resolvido',
   reaberto:           'Reaberto',
   cancelado:          'Cancelado',
 }
@@ -86,31 +86,31 @@ export const STATUS_TERMINAIS: TiStatus[] = ['fechado', 'fechado_automatico', 'c
 
 // ─── Status que SLA continua correndo ─────────────────────────
 export const STATUS_SLA_ATIVO: TiStatus[] = [
-  'aberto', 'em_atendimento', 'escalado', 'reaberto'
+  'aberto', 'em_atendimento', 'reaberto'
 ]
 
 // ─── Status que pausam o SLA ──────────────────────────────────
 export const STATUS_SLA_PAUSADO: TiStatus[] = [
-  'pendente_usuario', 'pendente_terceiro'
+  'pendente_usuario', 'pendente_terceiro', 'escalado'
 ]
 
 // ─── Transições válidas (State Machine) ───────────────────────
 export const TRANSICOES_VALIDAS: Record<TiStatus, TiStatus[]> = {
   aberto:             ['em_atendimento', 'cancelado'],
-  em_atendimento:     ['pendente_usuario', 'pendente_terceiro', 'escalado', 'resolvido', 'cancelado'],
-  pendente_usuario:   ['em_atendimento', 'fechado_automatico'],
-  pendente_terceiro:  ['em_atendimento'],
-  escalado:           ['em_atendimento'],
-  resolvido:          ['fechado', 'reaberto'],
+  em_atendimento:     ['resolvido', 'cancelado', 'pendente_usuario', 'pendente_terceiro', 'escalado'],
+  pendente_usuario:   ['em_atendimento', 'cancelado', 'resolvido'],
+  pendente_terceiro:  ['em_atendimento', 'cancelado', 'resolvido'],
+  escalado:           ['em_atendimento', 'cancelado', 'resolvido'],
+  resolvido:          ['reaberto'],
   fechado:            ['reaberto'],
   fechado_automatico: ['reaberto'],
-  reaberto:           ['em_atendimento'],
+  reaberto:           ['em_atendimento', 'cancelado'],
   cancelado:          [],
 }
 
 // ─── Transições que requerem justificativa ────────────────────
 export const TRANSICOES_REQUEREM_JUSTIFICATIVA: Partial<Record<TiStatus, TiStatus[]>> = {
-  em_atendimento: ['cancelado'],
+  em_atendimento: ['cancelado', 'escalado', 'pendente_usuario', 'pendente_terceiro'],
   resolvido:      ['reaberto'],
   fechado:        ['reaberto'],
 }

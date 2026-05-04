@@ -106,7 +106,7 @@ export default function MeusChamadosPage() {
     abertos:       chamados.filter(c => c.status === 'aberto').length,
     emAtendimento: chamados.filter(c => c.status === 'em_atendimento').length,
     resolvidos:    chamados.filter(c => c.status === 'resolvido').length,
-    slaViolados:   chamados.filter(c => c.sla_violado && !['fechado','fechado_automatico','cancelado'].includes(c.status)).length,
+    slaViolados:   chamados.filter(c => c.sla_violado && !['resolvido', 'cancelado'].includes(c.status)).length,
   }
 
   return (
@@ -155,9 +155,12 @@ export default function MeusChamadosPage() {
           { key: 'todos',           label: 'Todos' },
           { key: 'aberto',          label: 'Abertos' },
           { key: 'em_atendimento',  label: 'Em Atendimento' },
-          { key: 'pendente_usuario',label: 'Pendente' },
+          { key: 'pendente_usuario',label: 'Aguardando Usuário' },
+          { key: 'pendente_terceiro',label: 'Aguardando Terceiros' },
+          { key: 'escalado',        label: 'Escalar' },
           { key: 'resolvido',       label: 'Resolvidos' },
-          { key: 'fechado',         label: 'Fechados' },
+          { key: 'reaberto',        label: 'Reabertos' },
+          { key: 'cancelado',       label: 'Cancelados' },
         ] as { key: TiStatus | 'todos'; label: string }[]).map(tab => {
           const ativo = statusFiltro === tab.key
           const cor = tab.key !== 'todos' ? STATUS_COLORS[tab.key as TiStatus] : null

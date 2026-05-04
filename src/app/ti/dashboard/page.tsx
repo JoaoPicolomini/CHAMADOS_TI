@@ -6,14 +6,14 @@ import { useMsal } from '@azure/msal-react'
 import {
   Search, Download, Ticket, AlertTriangle, Clock,
   LayoutDashboard, ChevronLeft, ChevronRight, RefreshCw,
-  UserCheck, Users, Loader2,
+  UserCheck, Loader2, Settings, X, Calendar,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import {
   buscarChamadosAction,
+  exportarChamadosAction,
   buscarStatsDashboard,
   buscarCategoriasAction,
-  buscarEquipesAction,
   checkTiUserAccess,
   atribuirChamadoAction,
 } from '@/lib/ti/actions'
@@ -23,7 +23,7 @@ import {
   PRIORIDADE_LABELS, PRIORIDADE_COLORS,
   TIPO_LABELS,
 } from '@/lib/ti/constants'
-import type { TiStatus, TiPrioridade, TiCategoria, TiEquipe } from '@/lib/ti/types'
+import type { TiStatus, TiPrioridade, TiCategoria } from '@/lib/ti/types'
 
 // ─── Types ────────────────────────────────────────────────────
 type Chamado = {
@@ -33,16 +33,14 @@ type Chamado = {
   sla_prazo: string | null; sla_violado: boolean
   created_at: string; updated_at: string
   categoria?: { id: string; nome: string } | null
-  equipe?:    { id: string; nome: string } | null
   tecnico?:   { id: string; nome: string; email: string } | null
 }
 
-type AuthState = { perfil: string; permissions: string[] }
+type AuthState = { id: string; perfil: string; permissions: string[] }
 
 // ─── Helpers ──────────────────────────────────────────────────
 const TODOS_STATUS: TiStatus[] = [
-  'aberto', 'em_atendimento', 'pendente_usuario', 'pendente_terceiro',
-  'escalado', 'reaberto', 'resolvido', 'fechado', 'fechado_automatico', 'cancelado',
+  'aberto', 'em_atendimento', 'pendente_usuario', 'pendente_terceiro', 'escalado', 'reaberto', 'resolvido', 'cancelado',
 ]
 
 const PRIORIDADES: TiPrioridade[] = ['critica', 'alta', 'media', 'baixa']
@@ -105,8 +103,11 @@ export default function DashboardPage() {
   const [stats, setStats]         = useState({ total: 0, abertos: 0, emAtendimento: 0, slaViolados: 0 })
   const [categorias, setCategorias] = useState<TiCategoria[]>([])
   const [loading, setLoading]     = useState(true)
-  const [exporting, setExporting] = useState(false)
-  const [assumindo, setAssumindo] = useState<string | null>(null)
+  const [exporting,       setExporting]       = useState(false)
+  const [assumindo,       setAssumindo]       = useState<string | null>(null)
+  const [modalExport,     setModalExport]     = useState(false)
+  const [exportDataIni,   setExportDataIni]   = useState('')
+  const [exportDataFim,   setExportDataFim]   = useState('')
 
   // Paginação
   const [page, setPage]           = useState(1)
@@ -123,7 +124,7 @@ export default function DashboardPage() {
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
 
   const isTecnico = auth?.perfil === 'tecnico' || auth?.perfil === 'gestor_ti' || auth?.perfil === 'admin'
-  const isAdmin   = auth?.perfil === 'gestor_ti' || auth?.perfil === 'admin'
+  const isAdmin   = auth?.perfil === 'admin' || auth?.perfil === 'gestor_ti'
 
   // Load auth + stats + categories once
   useEffect(() => {
@@ -133,7 +134,7 @@ export default function DashboardPage() {
       buscarStatsDashboard(),
       buscarCategoriasAction(),
     ]).then(([authRes, statsRes, catRes]) => {
-      if (authRes.granted) setAuth({ perfil: authRes.perfil!, permissions: authRes.permissions })
+      if (authRes.granted) setAuth({ id: authRes.user?.id ?? '', perfil: authRes.perfil!, permissions: authRes.permissions })
       if (statsRes.success) setStats({ total: statsRes.total, abertos: statsRes.abertos, emAtendimento: statsRes.emAtendimento, slaViolados: statsRes.slaViolados })
       if (catRes.success) setCategorias(catRes.categorias.filter((c: TiCategoria) => !c.categoria_pai))
     })
@@ -172,45 +173,152 @@ export default function DashboardPage() {
   }
 
   // Exportar Excel
-  async function exportarExcel() {
+  async function exportarExcel(dataInicio: string, dataFim: string) {
+    setModalExport(false)
     setExporting(true)
-    const res = await buscarChamadosAction({
-      status:     statusFiltro.length ? statusFiltro : undefined,
-      prioridade: priorFiltro.length  ? priorFiltro  : undefined,
-      search:     search              || undefined,
-      userEmail,
-      assignee:   assignee !== 'all'  ? assignee     : undefined,
-      pageSize:   100,
-    })
-    if (res.success && res.chamados.length) {
-      const rows = (res.chamados as Chamado[]).map(c => ({
-        'Número':         c.numero,
-        'Título':         c.titulo,
-        'Status':         STATUS_LABELS[c.status],
-        'Prioridade':     PRIORIDADE_LABELS[c.prioridade],
-        'Tipo':           TIPO_LABELS[c.tipo as keyof typeof TIPO_LABELS] ?? c.tipo,
-        'Categoria':      c.categoria?.nome ?? '',
-        'Equipe':         c.equipe?.nome ?? '',
-        'Técnico':        c.tecnico?.nome ?? '',
-        'Solicitante':    c.solicitante_nome,
-        'Setor':          c.solicitante_setor,
-        'E-mail':         c.solicitante_email,
-        'Abertura':       new Date(c.created_at).toLocaleString('pt-BR'),
-        'SLA Violado':    c.sla_violado ? 'Sim' : 'Não',
-      }))
+    try {
+      const res = await exportarChamadosAction({
+        dataInicio: dataInicio || undefined,
+        dataFim:    dataFim    || undefined,
+        status:     statusFiltro.length ? statusFiltro : undefined,
+        prioridade: priorFiltro.length  ? priorFiltro  : undefined,
+        categoria_id: categoriaFiltro   || undefined,
+        search:     search              || undefined,
+        userEmail,
+        assignee:   assignee !== 'all'  ? assignee     : undefined,
+      })
+
+      if (!res.success || !res.chamados.length) return
+
+      const fmt = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR') : ''
+      const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('pt-BR') : ''
+
+      const rows = res.chamados.map((c: any) => {
+        const aberturaMs  = new Date(c.created_at).getTime()
+        const fechadoMs   = c.fechado_em ? new Date(c.fechado_em).getTime() : null
+        const tempoResHrs = fechadoMs ? Math.round((fechadoMs - aberturaMs) / 36e5 * 10) / 10 : null
+
+        const slaPrazoMs    = c.sla_prazo ? new Date(c.sla_prazo).getTime() : null
+        const slaDiffMs     = slaPrazoMs && fechadoMs ? fechadoMs - slaPrazoMs : null
+        const slaDesvioHrs  = slaDiffMs !== null ? Math.round(slaDiffMs / 36e5 * 10) / 10 : null
+
+        return {
+          // ─── Identificação ────────────────────────
+          'Número':                c.numero,
+          'Título':                c.titulo,
+          // ─── Classificação ────────────────────────
+          'Status':                STATUS_LABELS[c.status as TiStatus] ?? c.status,
+          'Tipo':                  TIPO_LABELS[c.tipo as keyof typeof TIPO_LABELS] ?? c.tipo,
+          'Prioridade':            PRIORIDADE_LABELS[c.prioridade as TiPrioridade] ?? c.prioridade,
+          'Origem':                c.origem ?? '',
+          'Nível Suporte':         c.nivel_suporte ? `N${c.nivel_suporte}` : '',
+          // ─── Categorização ────────────────────────
+          'Categoria':             (c.categoria as any)?.nome ?? '',
+          'Subcategoria':          (c.subcategoria as any)?.nome ?? '',
+          // ─── Equipe / Técnico ─────────────────────
+          'Equipe':                (c.equipe as any)?.nome ?? '',
+          'Técnico Responsável':   (c.tecnico as any)?.nome ?? '',
+          'E-mail Técnico':        (c.tecnico as any)?.email ?? '',
+          // ─── Solicitante ──────────────────────────
+          'Solicitante':           c.solicitante_nome,
+          'E-mail Solicitante':    c.solicitante_email,
+          'Ramal':                 c.solicitante_ramal ?? '',
+          'Setor':                 c.solicitante_setor,
+          'Unidade':               c.solicitante_unidade ?? '',
+          // ─── SLA ──────────────────────────────────
+          'SLA Prazo':             fmt(c.sla_prazo),
+          'SLA Violado':           c.sla_violado ? 'Sim' : 'Não',
+          'SLA Violado Em':        fmt(c.sla_violado_em),
+          'SLA Horas Pausadas':    c.sla_horas_pausadas ?? 0,
+          'SLA Desvio (h)':        slaDesvioHrs !== null ? (slaDesvioHrs > 0 ? `+${slaDesvioHrs}h` : `${slaDesvioHrs}h`) : '',
+          // ─── Resolução / Fechamento ───────────────
+          'Solução':               c.solucao ?? '',
+          'Causa Raiz':            c.causa_raiz ?? '',
+          'Motivo Cancelamento':   c.motivo_cancelamento ?? '',
+          'Fechado Em':            fmt(c.fechado_em),
+          'Fechado Por':           c.fechado_por ?? '',
+          'Tempo de Resolução (h)': tempoResHrs !== null ? `${tempoResHrs}h` : '',
+          // ─── Escalonamento ────────────────────────
+          'Escalado Em':           fmt(c.escalado_em),
+          'Escalado Por':          c.escalado_por ?? '',
+          // ─── Satisfação ───────────────────────────
+          'CSAT Nota':             c.satisfacao_nota ?? '',
+          'CSAT Comentário':       c.satisfacao_comentario ?? '',
+          'CSAT Respondido Em':    fmt(c.satisfacao_respondido_em),
+          // ─── Metadados ────────────────────────────
+          'Tags':                  Array.isArray(c.tags) ? c.tags.join(', ') : '',
+          'IP Abertura':           c.ip_abertura ?? '',
+          'Abertura':              fmt(c.created_at),
+          'Última Atualização':    fmt(c.updated_at),
+          'Data Abertura (só data)': fmtDate(c.created_at),
+        }
+      })
+
       const ws = XLSX.utils.json_to_sheet(rows)
+
+      // Larguras das colunas
+      const colWidths = [
+        10, 45, 16, 14, 12, 12, 4, 20, 20, 20, 24, 18,
+        14, 28, 30, 8, 20, 16, 20, 6, 16, 16, 8, 10,
+        50, 50, 30, 20, 20, 8, 20, 20, 6, 40, 20,
+        20, 10, 18, 14, 20,
+      ]
+      ws['!cols'] = colWidths.map(w => ({ wch: w }))
+
+      // Congela primeira linha
+      ws['!freeze'] = { xSplit: 0, ySplit: 1 }
+
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Chamados')
-      XLSX.writeFile(wb, `chamados-ti-${new Date().toISOString().split('T')[0]}.xlsx`)
+
+      // Aba de sumário
+      const STATUS_ENCERRADOS = ['resolvido', 'fechado', 'fechado_automatico']
+      const STATUS_ABERTOS    = ['aberto', 'em_atendimento', 'reaberto', 'pendente_usuario', 'pendente_terceiro', 'escalado']
+      const totalExportados = rows.length
+      const emAberto  = res.chamados.filter((c: any) => STATUS_ABERTOS.includes(c.status)).length
+      const violados  = res.chamados.filter((c: any) => c.sla_violado).length
+      const fechados  = res.chamados.filter((c: any) => STATUS_ENCERRADOS.includes(c.status)).length
+      const mediaRes  = (() => {
+        const tempos = res.chamados
+          .filter((c: any) => STATUS_ENCERRADOS.includes(c.status))
+          .map((c: any) => {
+            const fim = c.fechado_em ?? c.updated_at
+            return (new Date(fim).getTime() - new Date(c.created_at).getTime()) / 36e5
+          })
+        return tempos.length ? Math.round(tempos.reduce((a: number, b: number) => a + b, 0) / tempos.length * 10) / 10 : 0
+      })()
+
+      const sumario = [
+        ['Relatório de Chamados T.I', ''],
+        ['Gerado em', new Date().toLocaleString('pt-BR')],
+        ['Filtros Aplicados', [
+          statusFiltro.length ? `Status: ${statusFiltro.map(s => STATUS_LABELS[s]).join(', ')}` : '',
+          priorFiltro.length  ? `Prioridade: ${priorFiltro.map(p => PRIORIDADE_LABELS[p]).join(', ')}` : '',
+          search ? `Busca: "${search}"` : '',
+        ].filter(Boolean).join(' | ') || 'Nenhum'],
+        ['', ''],
+        ['Total Exportado',           totalExportados],
+        ['Em Aberto',                emAberto],
+        ['Encerrados / Resolvidos',  fechados],
+        ['SLA Violados',             violados],
+        ['Tempo Médio Resolução (h)', mediaRes],
+      ]
+      const wsSumario = XLSX.utils.aoa_to_sheet(sumario)
+      wsSumario['!cols'] = [{ wch: 32 }, { wch: 50 }]
+      XLSX.utils.book_append_sheet(wb, wsSumario, 'Sumário')
+
+      const fileName = `chamados-ti-${new Date().toISOString().split('T')[0]}.xlsx`
+      XLSX.writeFile(wb, fileName)
+    } finally {
+      setExporting(false)
     }
-    setExporting(false)
   }
 
   // Assumir chamado
   async function assumir(chamadoId: string) {
-    if (!userEmail) return
+    if (!userEmail || !auth?.id) return
     setAssumindo(chamadoId)
-    await atribuirChamadoAction({ chamado_id: chamadoId, atribuido_por: userEmail })
+    await atribuirChamadoAction({ chamado_id: chamadoId, tecnico_id: auth.id, atribuido_por: userEmail })
     await carregarChamados(page)
     setAssumindo(null)
   }
@@ -229,10 +337,11 @@ export default function DashboardPage() {
           <button onClick={() => carregarChamados(page)} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem', background: 'transparent', border: '1px solid #E5E7EB', borderRadius: '8px', color: '#374151', fontWeight: 500, cursor: 'pointer', fontSize: '0.8125rem' }}>
             <RefreshCw size={14} /> Atualizar
           </button>
-          <button onClick={exportarExcel} disabled={exporting} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem', background: exporting ? '#E5E7EB' : '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', color: '#16A34A', fontWeight: 600, cursor: exporting ? 'not-allowed' : 'pointer', fontSize: '0.8125rem' }}>
+          <button onClick={() => setModalExport(true)} disabled={exporting} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem', background: exporting ? '#E5E7EB' : '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', color: '#16A34A', fontWeight: 600, cursor: exporting ? 'not-allowed' : 'pointer', fontSize: '0.8125rem' }}>
             {exporting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={14} />}
             Exportar
           </button>
+
           <Link href="/ti/abrir" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 1rem', background: 'linear-gradient(135deg,#1E3A5F,#2563EB)', border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, fontSize: '0.8125rem', textDecoration: 'none' }}>
             <Ticket size={14} /> Abrir Chamado
           </Link>
@@ -440,6 +549,80 @@ export default function DashboardPage() {
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Modal de Exportação */}
+      {modalExport && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}>
+          <div style={{ background: '#FFF', borderRadius: '16px', width: '100%', maxWidth: '420px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+
+            {/* Header */}
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Calendar size={18} color="#16A34A" />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1E3A5F' }}>Exportar Relatório</h2>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#9CA3AF' }}>Filtro por data de abertura do chamado</p>
+                </div>
+              </div>
+              <button onClick={() => setModalExport(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', display: 'flex' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.4rem' }}>
+                  Data de início <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <input
+                  type="date"
+                  value={exportDataIni}
+                  onChange={e => setExportDataIni(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem 0.875rem', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', color: '#111827' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.4rem' }}>
+                  Data de término
+                  <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: '0.4rem' }}>(opcional — deixe em branco para até hoje)</span>
+                </label>
+                <input
+                  type="date"
+                  value={exportDataFim}
+                  min={exportDataIni || undefined}
+                  onChange={e => setExportDataFim(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem 0.875rem', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', color: '#111827' }}
+                />
+              </div>
+
+              {/* Info box */}
+              <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.78rem', color: '#0369A1', lineHeight: 1.5 }}>
+                O relatório incluirá <b>todos os chamados</b> abertos no período, com os filtros de status, prioridade e categoria ativos no painel aplicados.
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '1rem 1.5rem', background: '#F9FAFB', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                onClick={() => { setModalExport(false); setExportDataIni(''); setExportDataFim('') }}
+                style={{ padding: '0.5rem 1.25rem', background: '#FFF', border: '1px solid #E5E7EB', borderRadius: '8px', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => exportarExcel(exportDataIni, exportDataFim)}
+                disabled={!exportDataIni}
+                style={{ padding: '0.5rem 1.25rem', background: !exportDataIni ? '#E5E7EB' : 'linear-gradient(135deg,#16A34A,#15803D)', border: 'none', borderRadius: '8px', color: !exportDataIni ? '#9CA3AF' : '#FFF', fontWeight: 600, cursor: !exportDataIni ? 'not-allowed' : 'pointer', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <Download size={15} /> Gerar Excel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

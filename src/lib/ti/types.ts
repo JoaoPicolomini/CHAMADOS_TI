@@ -54,10 +54,26 @@ export interface TiCategoria {
   descricao: string | null
   ordem: number
   ativo: boolean
+  tipo_padrao: TiTipo
+  severidade: TiPrioridade | null
   created_at: string
   // Relações
   subcategorias?: TiCategoria[]
   pai?: TiCategoria
+}
+
+export interface TiSetor {
+  id: string
+  nome: string
+  ativo: boolean
+  created_at: string
+}
+
+export interface TiUnidade {
+  id: string
+  nome: string
+  ativo: boolean
+  created_at: string
 }
 
 export interface TiEquipe {
@@ -105,6 +121,8 @@ export interface TiAtivo {
   garantia_ate: string | null
   status: TiAtivoStatus
   observacoes: string | null
+  valor_compra: number | null
+  imei: string | null
   created_at: string
   updated_at: string
 }
@@ -120,6 +138,14 @@ export interface TiSlaConfig {
   ativo: boolean
   created_at: string
   updated_at: string
+  categoria?: {
+    id: string
+    nome: string
+    categoria_pai: string | null
+    pai?: {
+      nome: string
+    }
+  }
 }
 
 export interface TiChamado {
@@ -195,7 +221,7 @@ export interface TiChamado {
   categoria?: TiCategoria
   subcategoria?: TiCategoria
   equipe?: TiEquipe
-  tecnico?: TiTecnico
+  tecnico?: TiAccessUser
   ativo?: TiAtivo
 }
 
@@ -321,9 +347,7 @@ export interface CriarChamadoPayload {
   subcategoria_id?: string
   prioridade?: TiPrioridade
   tipo?: TiTipo
-  titulo: string
   descricao: string
-  passos_reproduzir?: string
   ativo_id?: string
   ativo_descricao?: string
   origem?: TiOrigem

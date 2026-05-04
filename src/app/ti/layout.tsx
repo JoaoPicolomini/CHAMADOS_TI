@@ -5,10 +5,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Ticket, BarChart3, Settings, History,
   BookOpen, LogOut, Menu, X, ShieldAlert, Users, Key,
-  MailCheck, Home, ShieldCheck, Monitor, Wrench, Clock,
+  MailCheck, Home, ShieldCheck, Monitor, Clock, ListTree
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
+import { useSearchParams } from 'next/navigation'
 import { checkTiUserAccess } from '@/lib/ti/actions'
 
 const NAV_ITEMS = [
@@ -22,7 +23,7 @@ const NAV_ITEMS = [
 
 const ADMIN_ITEMS = [
   { href: '/ti/admin/usuarios',    label: 'Usuários',           icon: Users,         permission: 'users.manage' },
-  { href: '/ti/admin/tecnicos',    label: 'Técnicos e Equipes', icon: Wrench,        permission: 'equipes.manage' },
+  { href: '/ti/admin/catalogos',   label: 'Catálogos',          icon: ListTree,      permission: 'users.manage' },
   { href: '/ti/admin/ativos',      label: 'Ativos de T.I',      icon: Monitor,       permission: 'ativos.manage' },
   { href: '/ti/admin/perfis',      label: 'Perfis de Acesso',   icon: ShieldCheck,   permission: 'users.manage' },
   { href: '/ti/admin/matriz-acesso', label: 'Matriz de Acesso', icon: Key,           permission: 'users.manage' },
@@ -31,7 +32,7 @@ const ADMIN_ITEMS = [
   { href: '/ti/config/sla',        label: 'Config SLA',         icon: Settings,      permission: 'config.view' },
 ]
 
-export default function TiAppLayout({ children }: { children: React.ReactNode }) {
+function TiAppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -45,7 +46,9 @@ export default function TiAppLayout({ children }: { children: React.ReactNode })
     permissions: string[]
   }>({ granted: null, permissions: [] })
 
-  const isPublicRoute = pathname === '/ti/abrir'
+  const searchParams = useSearchParams()
+  const isPublicKB = pathname.startsWith('/ti/base-conhecimento') && searchParams.get('public') === 'true'
+  const isPublicRoute = pathname === '/ti/abrir' || isPublicKB
 
   // Redireciona não-autenticados (ignorar rotas públicas)
   useEffect(() => {
@@ -346,5 +349,13 @@ export default function TiAppLayout({ children }: { children: React.ReactNode })
         }
       `}</style>
     </div>
+  )
+}
+
+export default function TiAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={null}>
+      <TiAppLayoutContent>{children}</TiAppLayoutContent>
+    </Suspense>
   )
 }

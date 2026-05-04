@@ -145,6 +145,12 @@ export function calcularSla(
 
   const agora = new Date()
   const prazo = new Date(prazoSla)
+  
+  // Ajusta o prazo com as horas que foram pausadas
+  if (slaHorasPausadas > 0) {
+    prazo.setHours(prazo.getHours() + slaHorasPausadas)
+  }
+
   const msRestante = prazo.getTime() - agora.getTime()
   const horasRestantes = msRestante / (1000 * 60 * 60)
   const minutosRestantes = msRestante / (1000 * 60)

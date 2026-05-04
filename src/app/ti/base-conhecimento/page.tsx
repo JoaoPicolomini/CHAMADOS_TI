@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useMsal } from '@azure/msal-react'
 import {
   Search, BookOpen, Eye, ThumbsUp, Tag, ChevronRight,
@@ -45,15 +45,21 @@ export default function BaseConhecimentoPage() {
   const [searchInput,  setSearchInput]  = useState('')
   const [categoriaId,  setCategoriaId]  = useState('')
 
+  const searchParams = useSearchParams()
+  const isPublicView = searchParams.get('public') === 'true'
+
   useEffect(() => {
     const account = accounts[0]
-    if (!account) return
+    if (!account || isPublicView) {
+      setAuthReady(true)
+      if (isPublicView) setIsAdmin(false)
+      return
+    }
     checkTiUserAccess(account.username).then(r => {
-      if (!r.granted) { router.push('/ti'); return }
       setIsAdmin(['admin', 'gestor_ti'].includes(r.perfil ?? ''))
       setAuthReady(true)
     })
-  }, [accounts, router])
+  }, [accounts, isPublicView])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -97,9 +103,15 @@ export default function BaseConhecimentoPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: '0.8rem', color: '#6B7280' }}>
-              <Link href="/ti/dashboard" style={{ color: '#6B7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <LayoutDashboard size={13} /> Painel
-              </Link>
+              {!isPublicView && accounts[0] ? (
+                <Link href="/ti/dashboard" style={{ color: '#6B7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <LayoutDashboard size={13} /> Painel
+                </Link>
+              ) : (
+                <Link href="/" style={{ color: '#6B7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Hub Principal
+                </Link>
+              )}
               <span>›</span>
               <span>Base de Conhecimento</span>
             </div>
@@ -111,7 +123,7 @@ export default function BaseConhecimentoPage() {
               {total} artigo{total !== 1 ? 's' : ''} disponível{total !== 1 ? 'is' : ''}
             </p>
           </div>
-          {isAdmin && (
+          {!isPublicView && isAdmin && (
             <Link href="/ti/admin/base-conhecimento" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: BLUE, color: 'white', borderRadius: 7, textDecoration: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
               Gerenciar Artigos
             </Link>
@@ -187,7 +199,7 @@ export default function BaseConhecimentoPage() {
               return (
                 <Link
                   key={a.id}
-                  href={`/ti/base-conhecimento/${a.id}`}
+                  href={`/ti/base-conhecimento/${a.id}${isPublicView ? '?public=true' : ''}`}
                   style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 10, padding: '18px 20px', textDecoration: 'none', display: 'block', transition: 'box-shadow 0.15s, border-color 0.15s' }}
                   onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; (e.currentTarget as HTMLAnchorElement).style.borderColor = '#BFDBFE' }}
                   onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'none'; (e.currentTarget as HTMLAnchorElement).style.borderColor = '#E5E7EB' }}

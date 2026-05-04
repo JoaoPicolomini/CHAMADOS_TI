@@ -5,11 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMsal } from '@azure/msal-react'
 import {
-  ArrowLeft, Clock, User, Tag, Monitor, Paperclip,
+  Clock, User, Tag,
   MessageSquare, GitBranch, LayoutDashboard, AlertTriangle,
-  CheckCircle, XCircle, RefreshCw, UserPlus, TrendingUp,
-  Download, Upload, Lock, Unlock, ChevronDown, Loader2,
-  Trash2, FileText, Image, File,
+  CheckCircle, UserPlus, TrendingUp,
+  Download, Upload, Lock, Loader2,
+  Trash2, FileText, Image, File, Pencil, Phone,
 } from 'lucide-react'
 import {
   buscarChamadoPorIdAction,
@@ -20,7 +20,10 @@ import {
   adicionarComentarioAction,
   uploadAnexoAction,
   gerarUrlAnexoAction,
-  buscarEquipesAction,
+  buscarAnalistasAtivosAction,
+  buscarCategoriasAction,
+  alterarCategoriaAction,
+  registrarContatoWhatsappAction,
 } from '@/lib/ti/actions'
 import { calcularSla, getProximosStatus, validateTransition } from '@/lib/ti/workflow'
 import {
@@ -94,7 +97,9 @@ function SlaBar({ chamado }: { chamado: any }) {
     <div style={{ background: cfg.bg, borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
       <div style={{ flex: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: cfg.text }}>{cfg.label}</span>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: cfg.text }}>
+            {cfg.label} {chamado.sla_pausado_em && <span style={{ fontStyle: 'italic', opacity: 0.8 }}>(Pausado)</span>}
+          </span>
           <span style={{ fontSize: '0.75rem', color: cfg.text }}>{timeLabel}</span>
         </div>
         <div style={{ height: 6, background: 'rgba(0,0,0,0.1)', borderRadius: 3, overflow: 'hidden' }}>
@@ -218,6 +223,9 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
   const [eventos,     setEventos]     = useState<any[]>([])
   const [comentarios, setComentarios] = useState<any[]>([])
   const [anexos,      setAnexos]      = useState<any[]>([])
+  const [fieldLogs,   setFieldLogs]   = useState<any[]>([])
+  const [usuariosMap, setUsuariosMap] = useState<Record<string, string>>({})
+  const [equipesMap,  setEquipesMap]  = useState<Record<string, string>>({})
   const [loading,     setLoading]     = useState(true)
   const [dataError,   setDataError]   = useState<string | null>(null)
 
@@ -237,14 +245,19 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
   const [motivoCancelamento,  setMotivoCancelamento]  = useState('')
 
   // Atribuir modal
-  const [equipes,         setEquipes]         = useState<any[]>([])
-  const [selectedEquipe,  setSelectedEquipe]  = useState('')
+  const [analistas,       setAnalistas]       = useState<any[]>([])
   const [selectedTecnico, setSelectedTecnico] = useState('')
 
   // Escalar modal
   const [nivelDestino,         setNivelDestino]         = useState<TiNivelSuporte>(2)
-  const [equipeDestino,        setEquipeDestino]        = useState('')
   const [justificativaEscalar, setJustificativaEscalar] = useState('')
+
+  // Editar classificação modal
+  const [catModal,         setCatModal]         = useState(false)
+  const [categorias,       setCategorias]       = useState<any[]>([])
+  const [editCatId,        setEditCatId]        = useState<string>('')
+  const [editSubcatId,     setEditSubcatId]     = useState<string>('')
+  const [editJustificativa, setEditJustificativa] = useState('')
 
   // Comentário
   const [novoComentario, setNovoComentario] = useState('')
@@ -282,6 +295,20 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
       setEventos(result.eventos ?? [])
       setComentarios(result.comentarios ?? [])
       setAnexos(result.anexos ?? [])
+      setFieldLogs(result.fieldLogs ?? [])
+      
+      // Criar mapa de IDs para Nomes
+      const mapU: Record<string, string> = {}
+      if (result.usuarios) {
+        result.usuarios.forEach((u: any) => { mapU[u.id] = u.nome })
+      }
+      setUsuariosMap(mapU)
+
+      const mapE: Record<string, string> = {}
+      if (result.equipes) {
+        result.equipes.forEach((e: any) => { mapE[e.id] = e.nome })
+      }
+      setEquipesMap(mapE)
     } else {
       setDataError(result.error || 'Chamado não encontrado.')
     }
@@ -292,12 +319,42 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
     if (authReady) carregarChamado()
   }, [authReady, carregarChamado])
 
-  // ── Load equipes ──────────────────────────────────────────
+  // ── Load analistas ──────────────────────────────────────────
   useEffect(() => {
-    if (authReady) buscarEquipesAction().then(r => { if (r.success) setEquipes(r.equipes) })
+    if (authReady) buscarAnalistasAtivosAction().then(r => { if (r.success) setAnalistas(r.analistas) })
   }, [authReady])
 
+  // ── Load categorias ──────────────────────────────────────────
+  useEffect(() => {
+    if (authReady) buscarCategoriasAction().then(r => { if (r.success) setCategorias(r.categorias) })
+  }, [authReady])
+
+  // ── Helpers ───────────────────────────────────────────────
+  const resolveValue = (campo: string, valor: string | null) => {
+    if (!valor) return 'vazio'
+    if (campo === 'tecnico_id')    return usuariosMap[valor] || valor
+    if (campo === 'equipe_id')     return equipesMap[valor]  || valor
+    if (campo === 'categoria_id')  return categorias.find((c: any) => c.id === valor)?.nome || valor
+    if (campo === 'subcategoria_id') return categorias.find((c: any) => c.id === valor)?.nome || valor
+    return valor
+  }
+
+  const getLabelCampo = (campo: string) => {
+    if (campo === 'tecnico_id')    return 'Técnico Responsável'
+    if (campo === 'equipe_id')     return 'Equipe Responsável'
+    if (campo === 'categoria_id')  return 'Categoria'
+    if (campo === 'subcategoria_id') return 'Subcategoria'
+    return campo
+  }
+
   // ── Derived ───────────────────────────────────────────────
+  const timelineUnified = [
+    ...eventos.map(ev => ({ ...ev, type: 'status' })),
+    ...comentarios.map(c => ({ ...c, type: 'comment' })),
+    ...anexos.map(a => ({ ...a, type: 'attachment' })),
+    ...fieldLogs.map(fl => ({ ...fl, type: 'field' })),
+  ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
   const isTecnico     = ['tecnico', 'gestor_ti', 'admin'].includes(perfil)
   const proximosStatus = chamado ? getProximosStatus(chamado.status as TiStatus) : []
   const isTerminal    = chamado && ['fechado', 'fechado_automatico', 'cancelado'].includes(chamado.status)
@@ -307,10 +364,7 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
     ? validateTransition(chamado.status as TiStatus, novoStatus as TiStatus)
     : null
 
-  // Tecnicos from selected equipe (or all if no equipe selected)
-  const tecnicosDisponiveis = selectedEquipe
-    ? equipes.find(e => e.id === selectedEquipe)?.tecnicos?.filter((t: any) => t.ativo) ?? []
-    : equipes.flatMap((e: any) => e.tecnicos?.filter((t: any) => t.ativo) ?? [])
+  const tecnicosDisponiveis = analistas
 
   // ── Action handlers ───────────────────────────────────────
   async function handleTransicionar() {
@@ -353,13 +407,12 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
     const result = await atribuirChamadoAction({
       chamado_id:  id,
       tecnico_id:  selectedTecnico || null,
-      equipe_id:   selectedEquipe  || null,
       atribuido_por: userEmail,
     })
     setSubmitting(false)
     if (result.success) {
       setAtribuirModal(false)
-      setSelectedEquipe(''); setSelectedTecnico('')
+      setSelectedTecnico('')
       await carregarChamado()
     } else {
       alert(result.error)
@@ -372,14 +425,13 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
     const result = await escalarChamadoAction({
       chamado_id:       id,
       nivel_destino:    nivelDestino,
-      equipe_destino_id: equipeDestino || undefined,
       justificativa:    justificativaEscalar,
       escalado_por:     userEmail,
     })
     setSubmitting(false)
     if (result.success) {
       setEscalarModal(false)
-      setJustificativaEscalar(''); setEquipeDestino('')
+      setJustificativaEscalar('')
       await carregarChamado()
     } else {
       alert(result.error)
@@ -427,9 +479,66 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
 
   // Open atribuir modal with current values pre-filled
   function openAtribuirModal() {
-    setSelectedEquipe(chamado?.equipe_id ?? '')
     setSelectedTecnico(chamado?.tecnico_id ?? '')
     setAtribuirModal(true)
+  }
+
+  // Open edit category modal pre-filled
+  function openCatModal() {
+    setEditCatId(chamado?.categoria_id ?? '')
+    setEditSubcatId(chamado?.subcategoria_id ?? '')
+    setEditJustificativa('')
+    setCatModal(true)
+  }
+
+  async function handleAlterarCategoria() {
+    if (!editJustificativa.trim() || !userEmail) { alert('Justificativa obrigatória.'); return }
+    setSubmitting(true)
+    const result = await alterarCategoriaAction({
+      chamado_id:     id,
+      categoria_id:   editCatId || null,
+      subcategoria_id: editSubcatId || null,
+      justificativa:  editJustificativa,
+      alterado_por:   userEmail,
+    })
+    setSubmitting(false)
+    if (result.success) {
+      setCatModal(false)
+      await carregarChamado()
+    } else {
+      alert(result.error)
+    }
+  }
+
+  async function handleWhatsApp(numero: string) {
+    if (!userEmail || !userName || !chamado) return
+
+    // Monta número limpo (apenas dígitos)
+    const digits = numero.replace(/\D/g, '')
+    // Adiciona DDI 55 (Brasil) se não começar com código de país
+    const intl = digits.startsWith('55') ? digits : `55${digits}`
+
+    const cat    = chamado.categoria?.nome    ?? '—'
+    const subcat = chamado.subcategoria?.nome ?? '—'
+    const msg    = encodeURIComponent(
+      `Olá! Estou entrando em contato referente ao chamado *${chamado.numero}*.\n` +
+      `Categoria: ${cat}\n` +
+      `Subcategoria: ${subcat}\n` +
+      `Título: ${chamado.titulo}`
+    )
+
+    // Abre WhatsApp
+    window.open(`https://wa.me/${intl}?text=${msg}`, '_blank')
+
+    // Registra na timeline
+    await registrarContatoWhatsappAction({
+      chamado_id:  id,
+      autor_nome:  userName,
+      autor_email: userEmail,
+      numero,
+    })
+
+    await carregarChamado()
   }
 
   // ── Render ────────────────────────────────────────────────
@@ -497,14 +606,7 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
                 <span style={{ fontFamily: 'monospace', fontWeight: 700, color: BLUE, fontSize: '1rem' }}>{chamado.numero}</span>
                 <StatusBadge status={chamado.status} />
                 <PrioridadeBadge prioridade={chamado.prioridade} />
-                <span style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(107,114,128,0.1)', color: '#374151' }}>
-                  {TIPO_LABELS[chamado.tipo as keyof typeof TIPO_LABELS] ?? chamado.tipo}
-                </span>
-                {chamado.nivel_suporte > 1 && (
-                  <span style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(234,88,12,0.1)', color: '#EA580C' }}>
-                    N{chamado.nivel_suporte}
-                  </span>
-                )}
+
               </div>
               <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: NAVY, lineHeight: 1.3 }}>{chamado.titulo}</h1>
               <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#6B7280' }}>
@@ -521,11 +623,6 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
                 <button onClick={openAtribuirModal} style={btnSecondary}>
                   <UserPlus size={14} /> Atribuir
                 </button>
-                {chamado.status === 'em_atendimento' && (
-                  <button onClick={() => setEscalarModal(true)} style={{ ...btnSecondary, color: '#EA580C', borderColor: '#EA580C' }}>
-                    <TrendingUp size={14} /> Escalar
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -534,24 +631,117 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
         {/* ── SLA Bar ── */}
         {chamado.sla_prazo && !isTerminal && <SlaBar chamado={chamado} />}
 
-        {/* ── Layout: tabs + sidebar ── */}
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        {/* ── Combined Block: Info + Tabs ── */}
+        <div style={{ background: CARD, borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
 
-          {/* ── Left: Tabs ── */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Tab Nav */}
-            <div style={{ background: CARD, borderRadius: 10, border: '1px solid #E5E7EB', marginBottom: 12, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', borderBottom: '1px solid #E5E7EB', overflowX: 'auto' }}>
-                <button onClick={() => setActiveTab('detalhes')}     style={tabStyle('detalhes')}>Detalhes</button>
-                <button onClick={() => setActiveTab('timeline')}     style={tabStyle('timeline')}>Timeline ({eventos.length})</button>
-                <button onClick={() => setActiveTab('comentarios')}  style={tabStyle('comentarios')}>Comentários ({comentarios.length})</button>
-                <button onClick={() => setActiveTab('anexos')}       style={tabStyle('anexos')}>Anexos ({anexos.length})</button>
+          {/* ── Info Strip (5 colunas) ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '2px solid #E5E7EB' }}>
+
+            {/* Solicitante */}
+            <div style={{ padding: '14px 16px', borderRight: '1px solid #F3F4F6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #F3F4F6' }}>
+                <User size={12} color={NAVY} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Solicitante</span>
               </div>
+              <InfoRow label="Nome"   value={chamado.solicitante_nome} />
+              <InfoRow label="E-mail" value={<a href={`mailto:${chamado.solicitante_email}`} style={{ color: BLUE }}>{chamado.solicitante_email}</a>} />
+              <InfoRow label="Setor"  value={chamado.solicitante_setor} />
+              {chamado.solicitante_unidade && <InfoRow label="Unidade" value={chamado.solicitante_unidade} />}
+              {chamado.solicitante_ramal && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contato</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{chamado.solicitante_ramal}</span>
+                    <button
+                      onClick={() => handleWhatsApp(chamado.solicitante_ramal)}
+                      title="Contatar via WhatsApp"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        padding: '2px 7px', borderRadius: 12,
+                        background: '#25D366', color: '#fff',
+                        border: 'none', cursor: 'pointer',
+                        fontSize: '0.7rem', fontWeight: 600,
+                      }}
+                    >
+                      <Phone size={10} />
+                      WA
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ── Detalhes Tab ── */}
+            {/* Classificação */}
+            <div style={{ padding: '14px 16px', borderRight: '1px solid #F3F4F6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #F3F4F6' }}>
+                <Tag size={12} color={NAVY} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Classificação</span>
+                {isTecnico && !isTerminal && (
+                  <button onClick={openCatModal} title="Editar classificação" style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', padding: 2, display: 'flex', alignItems: 'center' }}>
+                    <Pencil size={11} />
+                  </button>
+                )}
+              </div>
+              <InfoRow label="Categoria"    value={chamado.categoria?.nome} />
+              <InfoRow label="Subcategoria" value={chamado.subcategoria?.nome} />
+              <InfoRow label="Origem"       value={ORIGEM_LABELS[chamado.origem as keyof typeof ORIGEM_LABELS] ?? chamado.origem} />
+            </div>
+
+            {/* Atribuição */}
+            <div style={{ padding: '14px 16px', borderRight: '1px solid #F3F4F6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #F3F4F6' }}>
+                <UserPlus size={12} color={NAVY} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Atribuição</span>
+              </div>
+              <InfoRow label="Analista" value={chamado.tecnico?.nome} />
+              {chamado.escalado_em && <InfoRow label="Escalado em" value={fmtDate(chamado.escalado_em)} />}
+            </div>
+
+            {/* SLA */}
+            <div style={{ padding: '14px 16px', borderRight: '1px solid #F3F4F6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #F3F4F6' }}>
+                <Clock size={12} color={NAVY} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>SLA</span>
+              </div>
+              <InfoRow label="Prazo"   value={fmtDate(chamado.sla_prazo)} />
+              <InfoRow label="Violado" value={chamado.sla_violado ? <span style={{ color: '#DC2626', fontWeight: 600 }}>Sim</span> : <span style={{ color: '#16A34A' }}>Não</span>} />
+              {chamado.sla_violado_em && <InfoRow label="Violado em" value={fmtDate(chamado.sla_violado_em)} />}
+              {chamado.sla_horas_pausadas > 0 && <InfoRow label="Horas pausadas" value={`${chamado.sla_horas_pausadas}h`} />}
+            </div>
+
+            {/* Datas */}
+            <div style={{ padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #F3F4F6' }}>
+                <Clock size={12} color={NAVY} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Datas</span>
+              </div>
+              <InfoRow label="Criado em"     value={fmtDate(chamado.created_at)} />
+              <InfoRow label="Atualizado em" value={fmtDate(chamado.updated_at)} />
+              {chamado.fechado_em  && <InfoRow label="Fechado em"  value={fmtDate(chamado.fechado_em)} />}
+              {chamado.fechado_por && <InfoRow label="Fechado por" value={chamado.fechado_por} />}
+              {chamado.satisfacao_nota && (
+                <InfoRow label="Satisfação" value={
+                  <span>{'★'.repeat(chamado.satisfacao_nota)}{'☆'.repeat(5 - chamado.satisfacao_nota)}</span>
+                } />
+              )}
+            </div>
+
+          </div>
+
+          {/* ── Tab Nav ── */}
+          <div style={{ display: 'flex', borderBottom: '1px solid #E5E7EB', overflowX: 'auto' }}>
+            <button onClick={() => setActiveTab('detalhes')}    style={tabStyle('detalhes')}>Detalhes</button>
+            <button onClick={() => setActiveTab('timeline')}    style={tabStyle('timeline')}>Timeline ({eventos.length})</button>
+            <button onClick={() => setActiveTab('comentarios')} style={tabStyle('comentarios')}>Comentários ({comentarios.length})</button>
+            <button onClick={() => setActiveTab('anexos')}      style={tabStyle('anexos')}>Anexos ({anexos.length})</button>
+          </div>
+
+          {/* ── Tab Content ── */}
+          <div>
+
+            {/* Detalhes */}
             {activeTab === 'detalhes' && (
-              <div style={{ background: CARD, borderRadius: 10, border: '1px solid #E5E7EB', padding: '20px 24px' }}>
+              <div style={{ padding: '20px 24px' }}>
                 <h3 style={{ margin: '0 0 12px', fontWeight: 700, color: NAVY, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Descrição</h3>
                 <p style={{ margin: '0 0 20px', color: '#374151', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{chamado.descricao}</p>
 
@@ -599,43 +789,73 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
 
             {/* ── Timeline Tab ── */}
             {activeTab === 'timeline' && (
-              <div style={{ background: CARD, borderRadius: 10, border: '1px solid #E5E7EB', padding: '20px 24px' }}>
-                {eventos.length === 0 ? (
+              <div style={{ padding: '20px 24px' }}>
+                {timelineUnified.length === 0 ? (
                   <p style={{ color: '#6B7280', textAlign: 'center', padding: '32px 0' }}>Nenhum evento registrado.</p>
                 ) : (
                   <div style={{ position: 'relative' }}>
                     <div style={{ position: 'absolute', left: 16, top: 0, bottom: 0, width: 2, background: '#E5E7EB' }} />
-                    {eventos.map((ev: any, i: number) => {
-                      const isFirst = i === 0
-                      const statusPara = STATUS_LABELS[ev.status_para as TiStatus] ?? ev.status_para
-                      const statusDe   = ev.status_de ? (STATUS_LABELS[ev.status_de as TiStatus] ?? ev.status_de) : null
-                      const dotColor   = ev.status_para === 'cancelado' ? '#DC2626'
-                                       : ev.status_para === 'resolvido' || ev.status_para === 'fechado' ? '#16A34A'
-                                       : BLUE
-                      return (
-                        <div key={ev.id} style={{ display: 'flex', gap: 16, paddingBottom: 20, position: 'relative' }}>
-                          <div style={{ width: 34, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                            <div style={{ width: 12, height: 12, borderRadius: '50%', background: dotColor, border: `2px solid ${CARD}`, boxShadow: `0 0 0 2px ${dotColor}`, marginTop: 4, position: 'relative', zIndex: 1 }} />
+                    {timelineUnified.map((ev: any, idx: number) => {
+                      let icon = <Clock size={14} color="#6B7280" />
+                      let title: React.ReactNode = ''
+                      let dotColor = '#E5E7EB'
+                      let detail: React.ReactNode = null
+
+                      if (ev.type === 'status') {
+                        const statusPara = STATUS_LABELS[ev.status_para as TiStatus] ?? ev.status_para
+                        const statusDe   = ev.status_de ? (STATUS_LABELS[ev.status_de as TiStatus] ?? ev.status_de) : null
+                        dotColor = ev.status_para === 'cancelado' ? '#DC2626'
+                                 : ev.status_para === 'resolvido' || ev.status_para === 'fechado' ? '#16A34A'
+                                 : BLUE
+                        icon = <TrendingUp size={14} color="#fff" />
+                        title = statusDe ? (
+                          <span>Alterou status de <span style={{ color: '#6B7280' }}>{statusDe}</span> para <span style={{ color: dotColor, fontWeight: 700 }}>{statusPara}</span></span>
+                        ) : (
+                          <span>Definiu status como <span style={{ color: dotColor, fontWeight: 700 }}>{statusPara}</span></span>
+                        )
+                        detail = ev.justificativa && <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#6B7280', fontStyle: 'italic' }}>"{ev.justificativa}"</p>
+                      } 
+                      else if (ev.type === 'comment') {
+                        dotColor = '#EA580C'
+                        icon = <MessageSquare size={14} color="#fff" />
+                        title = <span>Adicionou um comentário {ev.interno && <span style={{ color: '#EA580C', fontSize: '0.7rem' }}>(interno)</span>}</span>
+                        detail = <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#4B5563', whiteSpace: 'pre-wrap', background: '#F9FAFB', padding: '8px 12px', borderRadius: 8 }}>{ev.conteudo}</p>
+                      }
+                      else if (ev.type === 'attachment') {
+                        dotColor = '#6366F1'
+                        icon = <File size={14} color="#fff" />
+                        title = <span>Anexou um arquivo: <span style={{ color: '#4B5563', fontWeight: 500 }}>{ev.nome_original}</span></span>
+                      }
+                      else if (ev.type === 'field') {
+                        dotColor = '#94A3B8'
+                        icon = <User size={14} color="#fff" />
+                        const labelCampo = getLabelCampo(ev.campo)
+                        title = <span>Alterou <span style={{ fontWeight: 600 }}>{labelCampo}</span></span>
+                        detail = (
+                          <div style={{ fontSize: '0.8rem', color: '#6B7280', marginTop: 4 }}>
+                            <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{resolveValue(ev.campo, ev.valor_antigo)}</span>
+                            <span style={{ margin: '0 6px' }}>→</span>
+                            <span style={{ fontWeight: 500, color: '#374151' }}>{resolveValue(ev.campo, ev.valor_novo)}</span>
                           </div>
-                          <div style={{ flex: 1, paddingBottom: 8 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 4 }}>
-                              <div>
-                                {statusDe ? (
-                                  <span style={{ fontWeight: 600, color: '#374151', fontSize: '0.875rem' }}>
-                                    <span style={{ color: '#6B7280' }}>{statusDe}</span>
-                                    <span style={{ color: '#9CA3AF', margin: '0 6px' }}>→</span>
-                                    <span style={{ color: dotColor }}>{statusPara}</span>
-                                  </span>
-                                ) : (
-                                  <span style={{ fontWeight: 600, color: dotColor, fontSize: '0.875rem' }}>{statusPara}</span>
-                                )}
-                                <span style={{ marginLeft: 8, fontSize: '0.75rem', color: '#6B7280' }}>por {ev.realizado_por}</span>
+                        )
+                      }
+
+                      return (
+                        <div key={`${ev.type}-${ev.id || idx}`} style={{ display: 'flex', gap: 16, paddingBottom: 24, position: 'relative' }}>
+                          <div style={{ width: 34, flexShrink: 0, display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: dotColor, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', border: `2px solid ${CARD}` }}>
+                              {icon}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div style={{ fontSize: '0.875rem', color: '#111827' }}>
+                                {title}
+                                <span style={{ marginLeft: 8, fontSize: '0.75rem', color: '#9CA3AF' }}>por {ev.realizado_por || ev.autor_nome || ev.alterado_por || ev.enviado_por || 'Sistema'}</span>
                               </div>
                               <span style={{ fontSize: '0.75rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>{fmtDate(ev.created_at)}</span>
                             </div>
-                            {ev.justificativa && (
-                              <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#6B7280', fontStyle: 'italic' }}>"{ev.justificativa}"</p>
-                            )}
+                            {detail}
                           </div>
                         </div>
                       )
@@ -813,66 +1033,6 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
               </div>
             )}
           </div>
-
-          {/* ── Right: Info Sidebar ── */}
-          <div style={{ width: 280, flexShrink: 0 }}>
-
-            <Card title="Solicitante" icon={<User size={14} />}>
-              <InfoRow label="Nome"    value={chamado.solicitante_nome} />
-              <InfoRow label="E-mail"  value={<a href={`mailto:${chamado.solicitante_email}`} style={{ color: BLUE }}>{chamado.solicitante_email}</a>} />
-              <InfoRow label="Setor"   value={chamado.solicitante_setor} />
-              {chamado.solicitante_unidade && <InfoRow label="Unidade" value={chamado.solicitante_unidade} />}
-              {chamado.solicitante_ramal  && <InfoRow label="Ramal"   value={chamado.solicitante_ramal} />}
-            </Card>
-
-            <Card title="Classificação" icon={<Tag size={14} />}>
-              <InfoRow label="Categoria"    value={chamado.categoria?.nome} />
-              <InfoRow label="Subcategoria" value={chamado.subcategoria?.nome} />
-              <InfoRow label="Tipo"         value={TIPO_LABELS[chamado.tipo as keyof typeof TIPO_LABELS] ?? chamado.tipo} />
-              <InfoRow label="Origem"       value={ORIGEM_LABELS[chamado.origem as keyof typeof ORIGEM_LABELS] ?? chamado.origem} />
-              {chamado.tags?.length > 0 && (
-                <InfoRow label="Tags" value={
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
-                    {chamado.tags.map((t: string) => (
-                      <span key={t} style={{ padding: '2px 6px', background: '#F3F4F6', borderRadius: 4, fontSize: '0.75rem' }}>{t}</span>
-                    ))}
-                  </div>
-                } />
-              )}
-            </Card>
-
-            <Card title="Atribuição" icon={<UserPlus size={14} />}>
-              <InfoRow label="Equipe"   value={chamado.equipe?.nome} />
-              <InfoRow label="Técnico"  value={chamado.tecnico?.nome} />
-              <InfoRow label="Nível"    value={`N${chamado.nivel_suporte}`} />
-              {chamado.escalado_em && <InfoRow label="Escalado em" value={fmtDate(chamado.escalado_em)} />}
-            </Card>
-
-            <Card title="SLA" icon={<Clock size={14} />}>
-              <InfoRow label="Prazo"     value={fmtDate(chamado.sla_prazo)} />
-              <InfoRow label="Violado"   value={chamado.sla_violado ? <span style={{ color: '#DC2626', fontWeight: 600 }}>Sim</span> : <span style={{ color: '#16A34A' }}>Não</span>} />
-              {chamado.sla_violado_em && <InfoRow label="Violado em" value={fmtDate(chamado.sla_violado_em)} />}
-              {chamado.sla_horas_pausadas > 0 && <InfoRow label="Horas pausadas" value={`${chamado.sla_horas_pausadas}h`} />}
-            </Card>
-
-            <Card title="Datas" icon={<Clock size={14} />}>
-              <InfoRow label="Criado em"     value={fmtDate(chamado.created_at)} />
-              <InfoRow label="Atualizado em" value={fmtDate(chamado.updated_at)} />
-              {chamado.fechado_em && <InfoRow label="Fechado em" value={fmtDate(chamado.fechado_em)} />}
-              {chamado.fechado_por && <InfoRow label="Fechado por" value={chamado.fechado_por} />}
-            </Card>
-
-            {chamado.satisfacao_nota && (
-              <Card title="Satisfação" icon={<CheckCircle size={14} />}>
-                <InfoRow label="Nota" value={
-                  <span style={{ fontSize: '1.2rem' }}>
-                    {'★'.repeat(chamado.satisfacao_nota)}{'☆'.repeat(5 - chamado.satisfacao_nota)}
-                  </span>
-                } />
-                {chamado.satisfacao_comentario && <InfoRow label="Comentário" value={chamado.satisfacao_comentario} />}
-              </Card>
-            )}
-          </div>
         </div>
       </div>
 
@@ -967,16 +1127,9 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
       {/* ── Atribuir Modal ── */}
       {atribuirModal && (
         <Modal title="Atribuir Chamado" onClose={() => setAtribuirModal(false)}>
-          <Field label="Equipe">
-            <select value={selectedEquipe} onChange={e => { setSelectedEquipe(e.target.value); setSelectedTecnico('') }} style={selectStyle}>
-              <option value="">Sem equipe</option>
-              {equipes.map((eq: any) => <option key={eq.id} value={eq.id}>{eq.nome}</option>)}
-            </select>
-          </Field>
-
-          <Field label="Técnico">
+          <Field label="Analista">
             <select value={selectedTecnico} onChange={e => setSelectedTecnico(e.target.value)} style={selectStyle}>
-              <option value="">Sem técnico</option>
+              <option value="">Sem analista</option>
               {tecnicosDisponiveis.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
             </select>
           </Field>
@@ -1001,6 +1154,64 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
         </Modal>
       )}
 
+      {/* ── Editar Classificação Modal ── */}
+      {catModal && (() => {
+        const categoriasRaiz = categorias.filter((c: any) => !c.categoria_pai)
+        const subcategorias  = categorias.filter((c: any) => c.categoria_pai === editCatId)
+        return (
+          <Modal title="Editar Classificação" onClose={() => setCatModal(false)}>
+            <Field label="Categoria" required>
+              <select
+                value={editCatId}
+                onChange={e => { setEditCatId(e.target.value); setEditSubcatId('') }}
+                style={selectStyle}
+              >
+                <option value="">Sem categoria</option>
+                {categoriasRaiz.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </Field>
+
+            {subcategorias.length > 0 && (
+              <Field label="Subcategoria">
+                <select
+                  value={editSubcatId}
+                  onChange={e => setEditSubcatId(e.target.value)}
+                  style={selectStyle}
+                >
+                  <option value="">Sem subcategoria</option>
+                  {subcategorias.map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.nome}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            <Field label="Justificativa da alteração" required>
+              <textarea
+                value={editJustificativa}
+                onChange={e => setEditJustificativa(e.target.value)}
+                placeholder="Por que está alterando a classificação?"
+                style={textareaStyle}
+              />
+            </Field>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setCatModal(false)} style={btnSecondary}>Cancelar</button>
+              <button
+                onClick={handleAlterarCategoria}
+                disabled={submitting || !editJustificativa.trim()}
+                style={{ ...btnPrimary, opacity: submitting || !editJustificativa.trim() ? 0.6 : 1 }}
+              >
+                {submitting ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Pencil size={14} />}
+                Salvar
+              </button>
+            </div>
+          </Modal>
+        )
+      })()}
+
       {/* ── Escalar Modal ── */}
       {escalarModal && (
         <Modal title="Escalar Chamado" onClose={() => setEscalarModal(false)}>
@@ -1014,15 +1225,6 @@ export default function ChamadoDetalhePage({ params }: { params: Promise<{ id: s
             <select value={nivelDestino} onChange={e => setNivelDestino(Number(e.target.value) as TiNivelSuporte)} style={selectStyle}>
               <option value={2}>N2 — Suporte Avançado</option>
               <option value={3}>N3 — Especialista / Fornecedor</option>
-            </select>
-          </Field>
-
-          <Field label="Equipe de destino">
-            <select value={equipeDestino} onChange={e => setEquipeDestino(e.target.value)} style={selectStyle}>
-              <option value="">Sem equipe específica</option>
-              {equipes.filter((e: any) => e.nivel >= nivelDestino).map((eq: any) => (
-                <option key={eq.id} value={eq.id}>{eq.nome} (N{eq.nivel})</option>
-              ))}
             </select>
           </Field>
 
