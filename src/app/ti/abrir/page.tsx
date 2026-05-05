@@ -112,10 +112,18 @@ function SearchableSelect({ label, required, value, options, onChange, placehold
           borderColor: open ? '#6A1025' : (error ? '#DC2626' : '#E0D8D0')
         }}
       >
-        <span style={{ color: value ? '#121820' : '#8A8078', fontSize: '0.9375rem' }}>
+        <span style={{ 
+          color: value ? '#121820' : '#8A8078', 
+          fontSize: '0.9375rem',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          flex: 1,
+          marginRight: '8px'
+        }}>
           {value || placeholder}
         </span>
-        <ChevronDown size={16} color="#8A8078" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        <ChevronDown size={16} color="#8A8078" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
       </div>
       
       {open && (
@@ -422,7 +430,7 @@ export default function AbrirChamadoPage() {
                   <input className={`input${errors.solicitante_email ? ' input-error' : ''}`} type="email" placeholder="seu@empresa.com" value={form.solicitante_email} onChange={e => update({ solicitante_email: e.target.value })} autoComplete="email" />
                 </Field>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="responsive-grid">
                   <SearchableSelect 
                     label="Setor" 
                     required 
@@ -481,7 +489,7 @@ export default function AbrirChamadoPage() {
 
 
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="responsive-grid">
                   <SearchableSelect 
                     label="Categoria"
                     value={rootCats.find(c => c.id === form.categoria_id)?.nome || ''}
@@ -635,7 +643,20 @@ export default function AbrirChamadoPage() {
         </div>
       </main>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .responsive-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1.25rem;
+        }
+        @media (max-width: 600px) {
+          .responsive-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+          }
+        }
+      `}</style>
     </div>
   )
 }
