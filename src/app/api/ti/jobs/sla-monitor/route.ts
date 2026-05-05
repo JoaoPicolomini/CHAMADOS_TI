@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { calcularSla } from '@/lib/ti/workflow'
 import { emailAlertaSla } from '@/lib/ti/email/templates'
-import { sendTiEmail } from '@/lib/ti/email/transporter'
+import { dispatchEmailEvent } from '@/lib/ti/events/n8nDispatcher'
 
 function getAdminSupabase() {
   return createClient(
@@ -12,24 +12,22 @@ function getAdminSupabase() {
   )
 }
 
-const APP_URL       = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-const CRON_SECRET   = process.env.CRON_SECRET || ''
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-// Status ativos (SLA correndo)
 const STATUS_ATIVOS = ['aberto', 'em_atendimento', 'escalado', 'reaberto']
 
 /**
  * GET /api/ti/jobs/sla-monitor
  * Verificação de SLA: marca violações e envia alertas de 70% e 90%.
- * Protegido por Authorization: Bearer <CRON_SECRET>.
  */
 export async function GET(req: NextRequest) {
-  // ── Auth ──────────────────────────────────────────────────
-  if (CRON_SECRET) {
-    const auth = req.headers.get('authorization') ?? ''
-    if (auth !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  // Proteção: apenas o Vercel Cron ou quem tiver o segredo pode rodar
+  const authHeader = req.headers.get('authorization')
+  const isVercelCron = req.headers.get('x-vercel-cron') === 'true'
+  const isLocal = process.env.NODE_ENV === 'development'
+
+  if (!isLocal && !isVercelCron && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response('Unauthorized', { status: 401 })
   }
 
   const supabase = getAdminSupabase()
@@ -111,7 +109,7 @@ export async function GET(req: NextRequest) {
           tecnico.email,
           APP_URL,
         )
-        await sendTiEmail({ to: tecnico.email, subject, html, chamado_id: chamado.id })
+        await dispatchEmailEvent({ to: tecnico.email, subject, html, chamado_id: chamado.id, event_type: 'sla_alert' })
 
         if (limiarAlerta >= 90) stats.alertas90++
         else stats.alertas70++

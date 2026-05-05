@@ -16,7 +16,7 @@ import type {
 } from './types'
 import { validateTransition, calcularPrazoSla, getPrazoHorasPadrao } from './workflow'
 import { TI_STORAGE_BUCKET } from './constants'
-import { sendTiEmail } from './email/transporter'
+import { dispatchEmailEvent } from './events/n8nDispatcher'
 
 import {
   emailChamadoAberto,
@@ -188,11 +188,12 @@ export async function criarChamadoAction(payload: CriarChamadoPayload) {
 
     // E-mail de confirmação ao solicitante
     const { subject, html } = emailChamadoAberto(chamado, APP_URL)
-    await sendTiEmail({
+    await dispatchEmailEvent({
       to:         chamado.solicitante_email,
       subject,
       html,
       chamado_id: chamado.id,
+      event_type: 'ticket_created',
     })
 
     return { success: true, chamado }
@@ -296,10 +297,11 @@ export async function transicionarStatusAction(payload: TransicaoStatusPayload) 
       payload.justificativa,
       APP_URL,
     )
-    await sendTiEmail({
+    await dispatchEmailEvent({
       to:         chamado.solicitante_email,
       subject,
       html,
+      event_type: 'status_changed',
       chamado_id: chamado.id,
     })
 
@@ -356,7 +358,7 @@ export async function atribuirChamadoAction(payload: AtribuirChamadoPayload) {
 
       if (tecnico) {
         const { subject, html } = emailChamadoAtribuido(chamado, tecnico.nome, APP_URL)
-        await sendTiEmail({ to: tecnico.email, subject, html, chamado_id: chamado.id })
+        await dispatchEmailEvent({ to: tecnico.email, subject, html, chamado_id: chamado.id, event_type: 'ticket_assigned' })
       }
     }
 
@@ -438,7 +440,7 @@ export async function adicionarComentarioAction(payload: AdicionarComentarioPayl
         const { subject, html } = emailNovoComentario(
           chamado, payload.autor_nome, payload.conteudo, APP_URL
         )
-        await sendTiEmail({ to: chamado.solicitante_email, subject, html, chamado_id: chamado.id })
+        await dispatchEmailEvent({ to: chamado.solicitante_email, subject, html, chamado_id: chamado.id, event_type: 'new_comment' })
       }
     }
 

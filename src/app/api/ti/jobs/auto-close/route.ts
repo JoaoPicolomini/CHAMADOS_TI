@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { emailLembretePendencia } from '@/lib/ti/email/templates'
-import { sendTiEmail } from '@/lib/ti/email/transporter'
+import { dispatchEmailEvent } from '@/lib/ti/events/n8nDispatcher'
 
 function getAdminSupabase() {
   return createClient(
@@ -11,25 +11,22 @@ function getAdminSupabase() {
   )
 }
 
-const APP_URL     = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-const CRON_SECRET = process.env.CRON_SECRET || ''
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-// Constantes de tempo
 const DIAS_LEMBRETE = 3  // dias pendente_usuario → lembrete
 
 /**
  * GET /api/ti/jobs/auto-close
- * 1. Envia lembrete ao solicitante após 3 dias em pendente_usuario
- *
- * Protegido por Authorization: Bearer <CRON_SECRET>.
+ * Envia lembrete ao solicitante após 3 dias em pendente_usuario.
  */
 export async function GET(req: NextRequest) {
-  // ── Auth ──────────────────────────────────────────────────
-  if (CRON_SECRET) {
-    const auth = req.headers.get('authorization') ?? ''
-    if (auth !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  // Proteção
+  const authHeader = req.headers.get('authorization')
+  const isVercelCron = req.headers.get('x-vercel-cron') === 'true'
+  const isLocal = process.env.NODE_ENV === 'development'
+
+  if (!isLocal && !isVercelCron && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response('Unauthorized', { status: 401 })
   }
 
   const supabase = getAdminSupabase()
@@ -67,7 +64,7 @@ export async function GET(req: NextRequest) {
           (now.getTime() - new Date(chamado.updated_at).getTime()) / (1000 * 60 * 60 * 24)
         )
         const { subject, html } = emailLembretePendencia(chamado, diasPendente, APP_URL)
-        await sendTiEmail({ to: chamado.solicitante_email, subject, html, chamado_id: chamado.id })
+        await dispatchEmailEvent({ to: chamado.solicitante_email, subject, html, chamado_id: chamado.id, event_type: 'pending_reminder' })
         stats.lembretes++
       } catch (e) {
         console.error(`[lembrete] ${chamado.numero}:`, e)

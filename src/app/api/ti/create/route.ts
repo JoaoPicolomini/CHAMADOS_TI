@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTiEmail } from '@/lib/ti/email/transporter'
+import { dispatchEmailEvent } from '@/lib/ti/events/n8nDispatcher'
 import { emailChamadoAberto } from '@/lib/ti/email/templates'
 import { calcularPrazoSla, getPrazoHorasPadrao } from '@/lib/ti/workflow'
 import { criarChamadoSchema } from '@/lib/ti/validations'
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     // Confirmation e-mail (non-blocking on error)
     try {
       const { subject, html } = emailChamadoAberto(chamado, APP_URL)
-      await sendTiEmail({ to: chamado.solicitante_email, subject, html, chamado_id: chamado.id })
+      await dispatchEmailEvent({ to: chamado.solicitante_email, subject, html, chamado_id: chamado.id, event_type: 'ticket_created' })
     } catch (emailErr) {
       console.error('[TI Create] Email error:', emailErr)
     }

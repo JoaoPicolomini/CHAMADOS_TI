@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Read(//c/c/Costa Lavos/CHAMADOS_TI/**)"
+    ]
+  }
+}

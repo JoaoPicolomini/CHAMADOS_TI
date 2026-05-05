@@ -6,49 +6,40 @@ import type { TiChamado } from '../types'
 import { STATUS_LABELS, PRIORIDADE_LABELS, TIPO_LABELS } from '../constants'
 
 // ─── Base HTML ────────────────────────────────────────────────
-function baseTemplate(titulo: string, conteudo: string): string {
-  return `
-<!DOCTYPE html>
+function baseTemplate(conteudo: string): string {
+  return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${titulo}</title>
 </head>
-<body style="margin:0;padding:0;background:#F5F7FA;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F7FA;padding:32px 16px;">
+<body style="margin:0;padding:0;background:#EFEDE8;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#EFEDE8;padding:40px 16px;">
     <tr>
       <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:12px;overflow:hidden;">
 
           <!-- Header -->
           <tr>
-            <td style="background:linear-gradient(135deg,#1E3A5F,#2563EB);border-radius:12px 12px 0 0;padding:28px 32px;text-align:center;">
-              <div style="display:inline-flex;align-items:center;gap:12px;">
-                <div style="width:40px;height:40px;background:rgba(255,255,255,0.15);border-radius:8px;display:flex;align-items:center;justify-content:center;">
-                  <span style="color:#FFFFFF;font-size:20px;font-weight:700;">TI</span>
-                </div>
-                <div>
-                  <div style="color:#FFFFFF;font-size:20px;font-weight:700;letter-spacing:-0.5px;">Suporte de T.I</div>
-                  <div style="color:rgba(255,255,255,0.7);font-size:12px;letter-spacing:0.1em;text-transform:uppercase;">Central de Chamados</div>
-                </div>
-              </div>
+            <td style="padding:32px 40px 24px;text-align:center;border-bottom:1px solid #F0EFEB;">
+              <span style="font-size:22px;font-weight:700;color:#1A1A1A;letter-spacing:-0.3px;">Costa Lavos</span>
+              <span style="font-size:22px;font-weight:700;color:#2563EB;margin-left:6px;">T.I</span>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
-            <td style="background:#FFFFFF;padding:32px;border-left:1px solid #E5E7EB;border-right:1px solid #E5E7EB;">
+            <td style="padding:32px 40px;">
               ${conteudo}
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="background:#F9FAFB;border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;padding:20px 32px;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#9CA3AF;">
+            <td style="padding:20px 40px;border-top:1px solid #F0EFEB;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#9CA3AF;line-height:1.6;">
                 Este e-mail foi gerado automaticamente pelo sistema de Chamados de T.I.<br>
-                Por favor, não responda diretamente a este e-mail.
+                Você pode <strong>responder a este e-mail</strong> para adicionar um comentário ao chamado.
               </p>
             </td>
           </tr>
@@ -61,6 +52,11 @@ function baseTemplate(titulo: string, conteudo: string): string {
 </html>`
 }
 
+// ─── Badge do chamado ─────────────────────────────────────────
+function numeroBadge(numero: string | undefined): string {
+  return `<span style="display:inline-block;padding:4px 14px;border:1.5px solid #1A1A1A;border-radius:999px;font-size:13px;font-weight:600;color:#1A1A1A;letter-spacing:0.02em;">${numero ?? ''}</span>`
+}
+
 // ─── Badge de prioridade ──────────────────────────────────────
 function prioridadeBadge(prioridade: string): string {
   const cores: Record<string, string> = {
@@ -71,7 +67,7 @@ function prioridadeBadge(prioridade: string): string {
   }
   const cor = cores[prioridade] || '#6B7280'
   const label = PRIORIDADE_LABELS[prioridade as keyof typeof PRIORIDADE_LABELS] || prioridade
-  return `<span style="display:inline-block;padding:3px 10px;background:${cor}20;color:${cor};border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">${label}</span>`
+  return `<span style="display:inline-block;padding:3px 10px;background:${cor}18;color:${cor};border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">${label}</span>`
 }
 
 // ─── Badge de status ──────────────────────────────────────────
@@ -93,12 +89,25 @@ function statusBadge(status: string): string {
   return `<span style="display:inline-block;padding:3px 10px;background:${cor}15;color:${cor};border-radius:4px;font-size:12px;font-weight:600;">${label}</span>`
 }
 
+// ─── Caixa de mensagem (estilo RNC) ───────────────────────────
+function caixaMensagem(label: string, conteudo: string): string {
+  return `
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
+    <tr>
+      <td style="border:1px solid #E5E3DC;border-radius:8px;padding:16px 20px;">
+        <div style="font-size:11px;font-weight:700;color:#9CA3AF;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">${label}</div>
+        <div style="font-size:14px;color:#374151;line-height:1.7;border-left:3px solid #2563EB;padding-left:12px;font-style:italic;">${conteudo}</div>
+      </td>
+    </tr>
+  </table>`
+}
+
 // ─── Linha de detalhe ─────────────────────────────────────────
 function detalheRow(label: string, valor: string): string {
   return `
   <tr>
-    <td style="padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:13px;color:#6B7280;font-weight:500;width:35%;">${label}</td>
-    <td style="padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:13px;color:#111827;">${valor}</td>
+    <td style="padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:12px;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;width:35%;vertical-align:top;">${label}</td>
+    <td style="padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:13px;color:#1A1A1A;">${valor}</td>
   </tr>`
 }
 
@@ -106,7 +115,7 @@ function detalheRow(label: string, valor: string): string {
 function ctaButton(texto: string, url: string): string {
   return `
   <div style="text-align:center;margin:28px 0 8px;">
-    <a href="${url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#1E3A5F,#2563EB);color:#FFFFFF;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;letter-spacing:0.01em;">
+    <a href="${url}" style="display:inline-block;padding:13px 32px;background:#1A1A1A;color:#FFFFFF;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;letter-spacing:0.02em;">
       ${texto}
     </a>
   </div>`
@@ -116,39 +125,28 @@ function ctaButton(texto: string, url: string): string {
 // TEMPLATE 1 — Chamado aberto (para o solicitante)
 // ============================================================
 export function emailChamadoAberto(chamado: Partial<TiChamado>, appUrl: string): { subject: string; html: string } {
-  const subject = `✅ Chamado ${chamado.numero} aberto — ${chamado.titulo}`
+  const subject = `✅ [Chamado #${chamado.numero}] Aberto — ${chamado.titulo}`
   const url = `${appUrl}/ti/chamado/${chamado.id}`
 
-  const html = baseTemplate('Chamado Aberto', `
-    <h2 style="margin:0 0 6px;font-size:22px;color:#111827;font-weight:700;">Chamado aberto com sucesso!</h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;">Olá, <strong>${chamado.solicitante_nome}</strong>! Seu chamado foi registrado e será atendido em breve.</p>
-
-    <!-- Número do chamado em destaque -->
-    <div style="background:#EFF6FF;border:2px solid #2563EB;border-radius:8px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;">
-      <div>
-        <div style="font-size:11px;color:#2563EB;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Número do Chamado</div>
-        <div style="font-size:26px;color:#1E3A5F;font-weight:800;letter-spacing:1px;">${chamado.numero}</div>
-      </div>
-      <div style="margin-left:auto;">${prioridadeBadge(chamado.prioridade || 'media')}</div>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">Chamado Aberto com Sucesso</h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">Olá, <strong>${chamado.solicitante_nome}</strong>! Seu chamado foi registrado.</p>
     </div>
 
-    <!-- Detalhes -->
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
       ${detalheRow('Título', chamado.titulo || '')}
       ${detalheRow('Tipo', TIPO_LABELS[chamado.tipo as keyof typeof TIPO_LABELS] || chamado.tipo || '')}
       ${detalheRow('Status', statusBadge(chamado.status || 'aberto'))}
+      ${detalheRow('Prioridade', prioridadeBadge(chamado.prioridade || 'media'))}
       ${chamado.sla_prazo ? detalheRow('Prazo SLA', new Date(chamado.sla_prazo).toLocaleString('pt-BR')) : ''}
     </table>
 
-    <div style="background:#F9FAFB;border-radius:8px;padding:16px;margin-bottom:24px;">
-      <div style="font-size:12px;color:#6B7280;font-weight:600;margin-bottom:6px;">DESCRIÇÃO</div>
-      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${chamado.descricao || ''}</p>
-    </div>
-
-    ${ctaButton('Acompanhar Chamado', url)}
+    ${chamado.descricao ? caixaMensagem('Descrição', chamado.descricao) : ''}
 
     <p style="margin:16px 0 0;font-size:12px;color:#9CA3AF;text-align:center;">
-      Você receberá atualizações por e-mail quando o status do chamado for alterado.
+      Você receberá atualizações por e-mail conforme o chamado avançar.
     </p>
   `)
 
@@ -163,31 +161,26 @@ export function emailChamadoAtribuido(
   tecnicoNome: string,
   appUrl: string,
 ): { subject: string; html: string } {
-  const subject = `🔔 Novo chamado atribuído — ${chamado.numero}`
+  const subject = `🔔 [Chamado #${chamado.numero}] Atribuído a você`
   const url = `${appUrl}/ti/chamado/${chamado.id}`
 
-  const html = baseTemplate('Chamado Atribuído', `
-    <h2 style="margin:0 0 6px;font-size:22px;color:#111827;font-weight:700;">Chamado atribuído a você</h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;">Olá, <strong>${tecnicoNome}</strong>! O chamado abaixo foi atribuído para seu atendimento.</p>
-
-    <div style="background:#F0FDF4;border:2px solid #16A34A;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
-      <div style="font-size:11px;color:#16A34A;font-weight:600;text-transform:uppercase;margin-bottom:2px;">Número do Chamado</div>
-      <div style="font-size:26px;color:#14532D;font-weight:800;">${chamado.numero}</div>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">Chamado Atribuído a Você</h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">Olá, <strong>${tecnicoNome}</strong>! O chamado abaixo está sob sua responsabilidade.</p>
     </div>
 
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
       ${detalheRow('Título', chamado.titulo || '')}
-      ${detalheRow('Solicitante', `${chamado.solicitante_nome} (${chamado.solicitante_setor})`)}
+      ${detalheRow('Solicitante', chamado.solicitante_nome || '')}
+      ${detalheRow('Setor', chamado.solicitante_setor || '')}
       ${detalheRow('Contato', chamado.solicitante_email || '')}
       ${detalheRow('Prioridade', prioridadeBadge(chamado.prioridade || 'media'))}
-      ${detalheRow('Tipo', TIPO_LABELS[chamado.tipo as keyof typeof TIPO_LABELS] || '')}
       ${chamado.sla_prazo ? detalheRow('Prazo SLA', `<strong style="color:#DC2626;">${new Date(chamado.sla_prazo).toLocaleString('pt-BR')}</strong>`) : ''}
     </table>
 
-    <div style="background:#F9FAFB;border-radius:8px;padding:16px;margin-bottom:24px;">
-      <div style="font-size:12px;color:#6B7280;font-weight:600;margin-bottom:6px;">DESCRIÇÃO DO PROBLEMA</div>
-      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${chamado.descricao || ''}</p>
-    </div>
+    ${chamado.descricao ? caixaMensagem('Descrição do Problema', chamado.descricao) : ''}
 
     ${ctaButton('Abrir Chamado', url)}
   `)
@@ -205,38 +198,33 @@ export function emailStatusAlterado(
   appUrl: string,
 ): { subject: string; html: string } {
   const statusLabel = STATUS_LABELS[chamado.status as keyof typeof STATUS_LABELS] || chamado.status
-  const subject = `🔄 Chamado ${chamado.numero} — Status atualizado: ${statusLabel}`
+  const subject = `🔄 [Chamado #${chamado.numero}] Status: ${statusLabel}`
   const url = `${appUrl}/ti/chamado/${chamado.id}`
 
-  const html = baseTemplate('Status Atualizado', `
-    <h2 style="margin:0 0 6px;font-size:22px;color:#111827;font-weight:700;">Atualização no seu chamado</h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;">Olá, <strong>${chamado.solicitante_nome}</strong>! Houve uma atualização no seu chamado <strong>${chamado.numero}</strong>.</p>
-
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;background:#F9FAFB;border-radius:8px;padding:16px 20px;">
-      <div style="text-align:center;">
-        <div style="font-size:11px;color:#6B7280;margin-bottom:4px;">ANTES</div>
-        ${statusBadge(statusAnterior)}
-      </div>
-      <div style="font-size:20px;color:#9CA3AF;">→</div>
-      <div style="text-align:center;">
-        <div style="font-size:11px;color:#6B7280;margin-bottom:4px;">AGORA</div>
-        ${statusBadge(chamado.status || '')}
-      </div>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">Atualização no Chamado</h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">Olá, <strong>${chamado.solicitante_nome}</strong>! Houve uma mudança no status do seu chamado.</p>
     </div>
 
-    ${comentario ? `
-    <div style="background:#F0F9FF;border-left:3px solid #2563EB;border-radius:0 8px 8px 0;padding:14px 16px;margin-bottom:24px;">
-      <div style="font-size:11px;color:#2563EB;font-weight:600;margin-bottom:4px;">OBSERVAÇÃO DO TÉCNICO</div>
-      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${comentario}</p>
-    </div>` : ''}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+      ${detalheRow('Título', chamado.titulo || '')}
+      ${detalheRow('Status anterior', statusBadge(statusAnterior))}
+      ${detalheRow('Novo status', statusBadge(chamado.status || ''))}
+    </table>
+
+    ${comentario ? caixaMensagem('Observação do Técnico', comentario) : ''}
 
     ${chamado.status === 'resolvido' || chamado.status === 'fechado' ? `
-    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:16px;margin-bottom:24px;text-align:center;">
-      <div style="font-size:14px;color:#15803D;font-weight:600;margin-bottom:4px;">Chamado resolvido!</div>
-      <p style="margin:0;font-size:13px;color:#166534;">
-        Se o problema persistir ou retornar, você pode reabrir este chamado acessando o link abaixo.
-      </p>
-    </div>` : ''}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
+      <tr>
+        <td style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:14px 20px;text-align:center;">
+          <div style="font-size:14px;font-weight:600;color:#15803D;">Chamado resolvido!</div>
+          <div style="font-size:13px;color:#166534;margin-top:4px;">Se o problema retornar, você pode reabrir o chamado pelo link abaixo.</div>
+        </td>
+      </tr>
+    </table>` : ''}
 
     ${ctaButton('Ver Chamado Completo', url)}
   `)
@@ -254,26 +242,22 @@ export function emailAlertaSla(
   appUrl: string,
 ): { subject: string; html: string } {
   const isCritico = percentualConsumido >= 90
-  const subject = `${isCritico ? '🚨' : '⚠️'} SLA em risco — Chamado ${chamado.numero} (${percentualConsumido.toFixed(0)}%)`
+  const subject = `${isCritico ? '🚨' : '⚠️'} [Chamado #${chamado.numero}] SLA em risco (${percentualConsumido.toFixed(0)}%)`
   const url = `${appUrl}/ti/chamado/${chamado.id}`
   const corAlerta = isCritico ? '#DC2626' : '#D97706'
-  const bgAlerta = isCritico ? '#FEF2F2' : '#FFFBEB'
 
-  const html = baseTemplate('Alerta de SLA', `
-    <div style="background:${bgAlerta};border:2px solid ${corAlerta};border-radius:8px;padding:16px 20px;margin-bottom:24px;text-align:center;">
-      <div style="font-size:36px;font-weight:800;color:${corAlerta};">${percentualConsumido.toFixed(0)}%</div>
-      <div style="font-size:14px;color:${corAlerta};font-weight:600;">do prazo SLA consumido</div>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">
+        ${isCritico ? 'Prazo Crítico de SLA' : 'Alerta de SLA'}
+      </h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">
+        O chamado abaixo está com <strong style="color:${corAlerta};">${percentualConsumido.toFixed(0)}% do prazo consumido</strong>.
+      </p>
     </div>
 
-    <h2 style="margin:0 0 6px;font-size:20px;color:#111827;font-weight:700;">
-      ${isCritico ? '🚨 Prazo crítico!' : '⚠️ Atenção ao prazo!'}
-    </h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;">
-      O chamado abaixo está ${isCritico ? '<strong>em situação crítica de SLA</strong>' : '<strong>com prazo em risco</strong>'}. Ação imediata necessária.
-    </p>
-
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-      ${detalheRow('Chamado', `<strong>${chamado.numero}</strong>`)}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
       ${detalheRow('Título', chamado.titulo || '')}
       ${detalheRow('Solicitante', `${chamado.solicitante_nome} — ${chamado.solicitante_setor}`)}
       ${detalheRow('Prioridade', prioridadeBadge(chamado.prioridade || 'media'))}
@@ -294,32 +278,35 @@ export function emailPesquisaSatisfacao(
   chamado: Partial<TiChamado>,
   appUrl: string,
 ): { subject: string; html: string } {
-  const subject = `⭐ Como foi seu atendimento? — Chamado ${chamado.numero}`
+  const subject = `⭐ [Chamado #${chamado.numero}] Como foi seu atendimento?`
   const baseUrl = `${appUrl}/satisfacao/${chamado.id}`
 
   const estrelas = [1, 2, 3, 4, 5].map(nota => `
-    <a href="${baseUrl}?nota=${nota}" style="display:inline-block;padding:12px 16px;background:#F9FAFB;border:2px solid #E5E7EB;border-radius:8px;text-decoration:none;margin:4px;font-size:22px;color:#374151;" title="${nota} estrela${nota > 1 ? 's' : ''}">
+    <a href="${baseUrl}?nota=${nota}" style="display:inline-block;padding:10px 14px;background:#F9FAFB;border:1.5px solid #E5E3DC;border-radius:8px;text-decoration:none;margin:4px;font-size:20px;" title="${nota} estrela${nota > 1 ? 's' : ''}">
       ${'⭐'.repeat(nota)}
     </a>
   `).join('')
 
-  const html = baseTemplate('Pesquisa de Satisfação', `
-    <div style="text-align:center;margin-bottom:24px;">
-      <div style="font-size:48px;margin-bottom:8px;">🎉</div>
-      <h2 style="margin:0 0 8px;font-size:22px;color:#111827;font-weight:700;">Chamado concluído!</h2>
-      <p style="margin:0;color:#6B7280;font-size:14px;">Seu chamado <strong>${chamado.numero}</strong> foi resolvido. Como foi o atendimento?</p>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">Como foi o atendimento?</h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">
+        Olá, <strong>${chamado.solicitante_nome}</strong>! Seu chamado foi resolvido. Avalie o suporte recebido.
+      </p>
     </div>
 
-    <div style="background:#F9FAFB;border-radius:8px;padding:16px;margin-bottom:24px;text-align:center;">
-      <div style="font-size:13px;color:#6B7280;margin-bottom:12px;">Clique para avaliar o atendimento recebido:</div>
-      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:4px;">
-        ${estrelas}
-      </div>
-    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+      <tr>
+        <td style="border:1px solid #E5E3DC;border-radius:8px;padding:20px;text-align:center;">
+          <div style="font-size:11px;font-weight:700;color:#9CA3AF;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:14px;">Clique para avaliar</div>
+          <div>${estrelas}</div>
+        </td>
+      </tr>
+    </table>
 
-    <p style="margin:0;font-size:12px;color:#9CA3AF;text-align:center;">
-      Sua avaliação nos ajuda a melhorar continuamente o suporte de T.I.<br>
-      Obrigado pelo seu tempo!
+    <p style="margin:16px 0 0;font-size:12px;color:#9CA3AF;text-align:center;">
+      Sua avaliação nos ajuda a melhorar continuamente o suporte de T.I. Obrigado!
     </p>
   `)
 
@@ -334,25 +321,37 @@ export function emailLembretePendencia(
   diasPendente: number,
   appUrl: string,
 ): { subject: string; html: string } {
-  const subject = `⏳ Aguardando sua resposta — Chamado ${chamado.numero}`
+  const subject = `⏳ [Chamado #${chamado.numero}] Aguardando sua resposta`
   const url = `${appUrl}/ti/chamado/${chamado.id}`
 
-  const html = baseTemplate('Pendente — Aguardando Resposta', `
-    <div style="background:#FFFBEB;border:2px solid #D97706;border-radius:8px;padding:16px 20px;margin-bottom:24px;text-align:center;">
-      <div style="font-size:36px;font-weight:800;color:#D97706;">${diasPendente}d</div>
-      <div style="font-size:14px;color:#B45309;font-weight:600;">aguardando sua resposta</div>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">Aguardando sua Resposta</h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">
+        Olá, <strong>${chamado.solicitante_nome}</strong>! Seu chamado está aguardando uma resposta sua há <strong>${diasPendente} dia${diasPendente > 1 ? 's' : ''}</strong>.
+      </p>
     </div>
 
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Precisamos da sua resposta</h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;">
-      Olá, <strong>${chamado.solicitante_nome}</strong>! Seu chamado <strong>${chamado.numero}</strong> está aguardando uma resposta sua há <strong>${diasPendente} dia${diasPendente > 1 ? 's' : ''}</strong>.
-      ${diasPendente >= 5 ? `<br><br><span style="color:#DC2626;font-weight:600;">⚠️ Se não houver resposta em breve, o chamado será fechado automaticamente.</span>` : ''}
-    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+      ${detalheRow('Título', chamado.titulo || '')}
+      ${detalheRow('Status', statusBadge('pendente_usuario'))}
+      ${detalheRow('Aguardando há', `${diasPendente} dia${diasPendente > 1 ? 's' : ''}`)}
+    </table>
+
+    ${diasPendente >= 5 ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
+      <tr>
+        <td style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:14px 20px;text-align:center;">
+          <div style="font-size:13px;font-weight:600;color:#DC2626;">Se não houver resposta em breve, o chamado será fechado automaticamente.</div>
+        </td>
+      </tr>
+    </table>` : ''}
 
     ${ctaButton('Responder ao Chamado', url)}
 
     <p style="margin:16px 0 0;font-size:12px;color:#9CA3AF;text-align:center;">
-      Se o problema já foi resolvido, clique no link para confirmar o fechamento.
+      Se o problema já foi resolvido, clique no link acima para confirmar o fechamento.
     </p>
   `)
 
@@ -368,19 +367,24 @@ export function emailNovoComentario(
   conteudo: string,
   appUrl: string,
 ): { subject: string; html: string } {
-  const subject = `💬 Novo comentário no chamado ${chamado.numero}`
+  const subject = `💬 [Chamado #${chamado.numero}] Novo comentário`
   const url = `${appUrl}/ti/chamado/${chamado.id}`
 
-  const html = baseTemplate('Novo Comentário', `
-    <h2 style="margin:0 0 6px;font-size:22px;color:#111827;font-weight:700;">Novo comentário no seu chamado</h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;">
-      Olá, <strong>${chamado.solicitante_nome}</strong>! <strong>${autorNome}</strong> adicionou um comentário no chamado <strong>${chamado.numero}</strong>.
-    </p>
-
-    <div style="background:#F0F9FF;border-left:4px solid #2563EB;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:24px;">
-      <div style="font-size:12px;color:#2563EB;font-weight:600;margin-bottom:6px;">${autorNome}</div>
-      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${conteudo}</p>
+  const html = baseTemplate(`
+    <div style="text-align:center;margin-bottom:28px;">
+      ${numeroBadge(chamado.numero)}
+      <h2 style="margin:16px 0 6px;font-size:20px;font-weight:700;color:#1A1A1A;">Novo Comentário Adicionado</h2>
+      <p style="margin:0;font-size:14px;color:#6B7280;">
+        Olá, <strong>${chamado.solicitante_nome}</strong>! <strong>${autorNome}</strong> comentou no seu chamado.
+      </p>
     </div>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+      ${detalheRow('Chamado', chamado.titulo || '')}
+      ${detalheRow('Comentado por', autorNome)}
+    </table>
+
+    ${caixaMensagem('Mensagem', conteudo)}
 
     ${ctaButton('Ver Chamado Completo', url)}
   `)

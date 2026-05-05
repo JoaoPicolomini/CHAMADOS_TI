@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/ti/jobs/sla-monitor",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/ti/jobs/auto-close",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
