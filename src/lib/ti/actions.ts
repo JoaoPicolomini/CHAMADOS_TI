@@ -1509,35 +1509,79 @@ export async function toggleProfilePermissionAdminAction(perfil: string, permiss
 // ADMIN: EMAIL LOGS
 // ============================================================
 
-export async function buscarEmailLogsAdminAction(params: { search?: string, status?: string, page: number }) {
+export async function buscarEmailLogsAdminAction(params: {
+  search?: string
+  status?: string
+  direction?: string
+  page: number
+}) {
   try {
     const supabase = getAdminSupabase()
-    
+
     let query = supabase.from('ti_email_logs')
       .select('*, ti_chamados!left(numero)', { count: 'exact' })
-      
+
     if (params.search) {
-      query = query.or(`recipient.ilike.%${params.search}%,subject.ilike.%${params.search}%`)
+      query = query.or(`recipient.ilike.%${params.search}%,subject.ilike.%${params.search}%,from_email.ilike.%${params.search}%`)
     }
     if (params.status) {
       query = query.eq('status', params.status)
     }
-    
+    if (params.direction) {
+      query = query.eq('direction', params.direction)
+    }
+
     const pageSize = 20
     const from = (params.page - 1) * pageSize
     const to = from + pageSize - 1
-    
+
     const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, to)
     if (error) throw error
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       logs: data ?? [],
       total: count ?? 0,
       totalPages: count ? Math.ceil(count / pageSize) : 1
     }
   } catch (err: any) {
     return { success: false, error: err.message, logs: [], total: 0, totalPages: 1 }
+  }
+}
+
+export async function reenviarEmailAdminAction(id: string) {
+  try {
+    const supabase = getAdminSupabase()
+
+    const { data: log, error } = await supabase
+      .from('ti_email_logs')
+      .select('id, recipient, subject, body_html, chamado_id, event_type, direction')
+      .eq('id', id)
+      .single()
+
+    if (error || !log) throw new Error('Log não encontrado')
+    if (log.direction !== 'outbound') throw new Error('Apenas e-mails de saída podem ser reenviados')
+    if (!log.body_html) throw new Error('Corpo do e-mail não disponível para reenvio')
+
+    const ok = await dispatchEmailEvent({
+      to:         log.recipient,
+      subject:    log.subject,
+      html:       log.body_html,
+      chamado_id: log.chamado_id ?? undefined,
+      event_type: log.event_type ?? undefined,
+    })
+
+    await supabase
+      .from('ti_email_logs')
+      .update(ok
+        ? { status: 'success', sent_at: new Date().toISOString(), error_message: null }
+        : { status: 'error',   error_message: 'Reenvio falhou' }
+      )
+      .eq('id', id)
+
+    return ok ? { success: true } : { success: false, error: 'Falha no reenvio' }
+  } catch (err: any) {
+    return { success: false, error: err.message }
   }
 }
 

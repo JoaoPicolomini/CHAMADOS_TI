@@ -38,7 +38,10 @@ async function sendViaN8n(payload: EmailDispatchPayload): Promise<void> {
 
   const res = await fetch(url, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'x-n8n-api-key': process.env.N8N_WEBHOOK_SECRET || ''
+    },
     body: JSON.stringify(payload),
   })
 

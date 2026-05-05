@@ -330,9 +330,16 @@ export interface TiEmailLog {
   chamado_id: string | null
   recipient: string
   subject: string
-  status: 'success' | 'error'
+  status: 'pending' | 'success' | 'error' | 'received'
   error_message: string | null
   created_at: string
+  direction: 'outbound' | 'inbound'
+  from_email: string | null
+  body_html: string | null
+  body_text: string | null
+  event_type: string | null
+  sent_at: string | null
+  ti_chamados?: { numero: string } | null
 }
 
 // ─── DTOs / Payloads ──────────────────────────────────────────
