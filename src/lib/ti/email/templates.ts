@@ -126,7 +126,6 @@ function ctaButton(texto: string, url: string): string {
 // ============================================================
 export function emailChamadoAberto(chamado: Partial<TiChamado>, appUrl: string): { subject: string; html: string } {
   const subject = `✅ [Chamado #${chamado.numero}] Aberto — ${chamado.titulo}`
-  const url = `${appUrl}/ti/chamado/${chamado.id}`
 
   const html = baseTemplate(`
     <div style="text-align:center;margin-bottom:28px;">
@@ -199,7 +198,6 @@ export function emailStatusAlterado(
 ): { subject: string; html: string } {
   const statusLabel = STATUS_LABELS[chamado.status as keyof typeof STATUS_LABELS] || chamado.status
   const subject = `🔄 [Chamado #${chamado.numero}] Status: ${statusLabel}`
-  const url = `${appUrl}/ti/chamado/${chamado.id}`
 
   const html = baseTemplate(`
     <div style="text-align:center;margin-bottom:28px;">
@@ -221,12 +219,10 @@ export function emailStatusAlterado(
       <tr>
         <td style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:14px 20px;text-align:center;">
           <div style="font-size:14px;font-weight:600;color:#15803D;">Chamado resolvido!</div>
-          <div style="font-size:13px;color:#166534;margin-top:4px;">Se o problema retornar, você pode reabrir o chamado pelo link abaixo.</div>
+          <div style="font-size:13px;color:#166534;margin-top:4px;">Se o problema retornar, você pode reabrir o chamado respondendo a este e-mail.</div>
         </td>
       </tr>
     </table>` : ''}
-
-    ${ctaButton('Ver Chamado Completo', url)}
   `)
 
   return { subject, html }
@@ -322,7 +318,6 @@ export function emailLembretePendencia(
   appUrl: string,
 ): { subject: string; html: string } {
   const subject = `⏳ [Chamado #${chamado.numero}] Aguardando sua resposta`
-  const url = `${appUrl}/ti/chamado/${chamado.id}`
 
   const html = baseTemplate(`
     <div style="text-align:center;margin-bottom:28px;">
@@ -348,10 +343,8 @@ export function emailLembretePendencia(
       </tr>
     </table>` : ''}
 
-    ${ctaButton('Responder ao Chamado', url)}
-
     <p style="margin:16px 0 0;font-size:12px;color:#9CA3AF;text-align:center;">
-      Se o problema já foi resolvido, clique no link acima para confirmar o fechamento.
+      Para interagir com este chamado, basta responder a este e-mail.
     </p>
   `)
 
@@ -368,7 +361,6 @@ export function emailNovoComentario(
   appUrl: string,
 ): { subject: string; html: string } {
   const subject = `💬 [Chamado #${chamado.numero}] Novo comentário`
-  const url = `${appUrl}/ti/chamado/${chamado.id}`
 
   const html = baseTemplate(`
     <div style="text-align:center;margin-bottom:28px;">
@@ -385,8 +377,6 @@ export function emailNovoComentario(
     </table>
 
     ${caixaMensagem('Mensagem', conteudo)}
-
-    ${ctaButton('Ver Chamado Completo', url)}
   `)
 
   return { subject, html }
