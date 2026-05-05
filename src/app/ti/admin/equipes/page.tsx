@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMsal } from '@azure/msal-react'
 import {
-  Search, Users, Plus, X, Loader2, LayoutDashboard,
+  Search, Plus, X, Loader2, LayoutDashboard,
   Edit2, Check, Shield, Server
 } from 'lucide-react'
 import { checkTiUserAccess, buscarEquipesAdminAction, salvarEquipeAdminAction } from '@/lib/ti/actions'
@@ -19,7 +19,6 @@ export default function EquipesAdminPage() {
   const { accounts } = useMsal()
 
   const [authReady, setAuthReady] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   
   const [equipes, setEquipes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +39,6 @@ export default function EquipesAdminPage() {
         router.push('/ti/dashboard')
         return
       }
-      setIsAdmin(true)
       setAuthReady(true)
     })
   }, [accounts, router])

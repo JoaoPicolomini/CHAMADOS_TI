@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMsal } from '@azure/msal-react'
@@ -17,7 +17,6 @@ export default function EmailLogsPage() {
   const { accounts } = useMsal()
 
   const [authReady, setAuthReady] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   
   const [logs, setLogs] = useState<any[]>([])
   const [total, setTotal] = useState(0)
@@ -37,7 +36,6 @@ export default function EmailLogsPage() {
         router.push('/ti/dashboard')
         return
       }
-      setIsAdmin(true)
       setAuthReady(true)
     })
   }, [accounts, router])

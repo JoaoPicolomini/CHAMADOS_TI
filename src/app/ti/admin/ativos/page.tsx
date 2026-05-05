@@ -7,7 +7,7 @@ import { useMsal } from '@azure/msal-react'
 import {
   Search, Plus, X, Loader2, LayoutDashboard,
   Edit2, Check, Shield, Monitor, Eye, Upload,
-  Package, Laptop, Cpu, DollarSign, AlertTriangle,
+  Package, DollarSign, AlertTriangle,
   FileSpreadsheet, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'

@@ -81,7 +81,7 @@ async function main() {
     console.log('ℹ️ RPC exec_ddl não disponível. Tentando via Supabase SQL...')
     
     // Testar se a tabela já existe com service role
-    const { data, error } = await supabase.from('rnc_email_logs').select('id').limit(1)
+    const { error } = await supabase.from('rnc_email_logs').select('id').limit(1)
     
     if (!error) {
       console.log('✅ Tabela já existe e está acessível!')

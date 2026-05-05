@@ -6,7 +6,6 @@ import {
   Monitor, ChevronRight, Check, Upload, X, FileText,
   AlertCircle, ArrowLeft, Loader2, CheckCircle2, Ticket, ChevronDown, Search
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { uploadAnexoAction, buscarCatalogosPublicosAction } from '@/lib/ti/actions'
 import type { TiCategoria, TiSetor, TiUnidade } from '@/lib/ti/types'
 

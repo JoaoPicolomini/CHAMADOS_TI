@@ -41,8 +41,6 @@ CREATE INDEX IF NOT EXISTS idx_rnc_email_logs_created_at ON rnc_email_logs(creat
 `
 
 async function runSql(sql: string) {
-  const url = `${SUPABASE_URL}/rest/v1/`
-  
   // Usar pg endpoint direto da API do Supabase
   const resp = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_ID}/database/query`, {
     method: 'POST',

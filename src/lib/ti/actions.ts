@@ -12,9 +12,7 @@ import type {
   TiStatus,
   TiPrioridade,
   TiSlaConfig,
-  TiCategoria,
-  TiSetor,
-  TiUnidade
+  TiCategoria
 } from './types'
 import { validateTransition, calcularPrazoSla, getPrazoHorasPadrao } from './workflow'
 import { TI_STORAGE_BUCKET } from './constants'
