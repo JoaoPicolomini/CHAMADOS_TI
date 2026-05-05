@@ -622,20 +622,20 @@ export default function AbrirChamadoPage() {
           {/* Navigation */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #F3F4F6' }}>
             {step > 1 ? (
-              <button type="button" onClick={prevStep} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'transparent', border: '1px solid #E5E7EB', borderRadius: '8px', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
-                <ArrowLeft size={16} /> Voltar
+              <button type="button" onClick={prevStep} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1rem', background: 'transparent', border: '1px solid #E5E7EB', borderRadius: '8px', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: '0.8125rem' }}>
+                <ArrowLeft size={14} /> Voltar
               </button>
             ) : <div />}
 
             {step < 3 ? (
-              <button type="button" onClick={nextStep} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem', background: 'linear-gradient(135deg, #1E3A5F, #2563EB)', border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem', boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}>
-                Próximo <ChevronRight size={16} />
+              <button type="button" onClick={nextStep} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1.25rem', background: 'linear-gradient(135deg, #1E3A5F, #2563EB)', border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, cursor: 'pointer', fontSize: '0.8125rem', boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}>
+                Próximo <ChevronRight size={14} />
               </button>
             ) : (
-              <button type="button" onClick={handleSubmit} disabled={isSubmitting} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.75rem', background: isSubmitting ? '#9CA3AF' : 'linear-gradient(135deg, #059669, #10B981)', border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, cursor: isSubmitting ? 'not-allowed' : 'pointer', fontSize: '0.875rem', boxShadow: isSubmitting ? 'none' : '0 2px 8px rgba(5,150,105,0.3)' }}>
+              <button type="button" onClick={handleSubmit} disabled={isSubmitting} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1.25rem', background: isSubmitting ? '#9CA3AF' : 'linear-gradient(135deg, #059669, #10B981)', border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, cursor: isSubmitting ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', boxShadow: isSubmitting ? 'none' : '0 2px 8px rgba(5,150,105,0.3)' }}>
                 {isSubmitting
-                  ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
-                  : <><Ticket size={16} /> Abrir Chamado</>
+                  ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
+                  : <><Ticket size={14} /> Abrir Chamado</>
                 }
               </button>
             )}
