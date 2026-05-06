@@ -9,17 +9,9 @@ import {
   AlertCircle, ChevronDown,
   Power, PowerOff, ListPlus, Edit3, Clock
 } from 'lucide-react'
-import {
-  checkTiUserAccess,
-  buscarDadosCatalogosAction,
-  salvarCategoriaCompletaAction,
-  alternarStatusCatalogoAction,
-  salvarSetorAction,
-  salvarUnidadeAction,
-  salvarSlaConfigAction,
-  atualizarSeveridadeCategoriaAction
-} from '@/lib/ti/actions'
+import { checkTiUserAccess, buscarDadosCatalogosAction, salvarCategoriaCompletaAction, alternarStatusCatalogoAction, salvarSetorAction, salvarUnidadeAction, salvarSlaConfigAction, atualizarSeveridadeCategoriaAction } from '@/lib/ti/actions'
 import type { TiCategoria, TiSetor, TiUnidade, TiTipo, TiPrioridade } from '@/lib/ti/types'
+import { slugify } from '@/lib/utils'
 
 const NAVY = '#1E3A5F'
 const BLUE = '#2563EB'
@@ -162,15 +154,15 @@ export default function AdminCatalogosPage() {
     setSaving(true)
     try {
       if (modalType === 'categorias') {
+        const parentSlug = slugify(catName)
         const parent = editingItem 
-          ? { id: editingItem.id, nome: catName, slug: catName.toLowerCase().replace(/ /g, '_'), tipo_padrao: catTipo, severidade: catSeveridade || null }
-          : { nome: catName, slug: catName.toLowerCase().replace(/ /g, '_'), ordem: 0, tipo_padrao: catTipo, severidade: catSeveridade || null }
+          ? { id: editingItem.id, nome: catName, slug: parentSlug, tipo_padrao: catTipo, severidade: catSeveridade || null }
+          : { nome: catName, slug: parentSlug, ordem: 0, tipo_padrao: catTipo, severidade: catSeveridade || null }
         
-        // Em um cenário real, você quer comparar subcategorias existentes para saber se deleta/atualiza.
-        // Aqui, para simplificar conforme pedido, vamos criar novas ou manter.
+        // Subcategorias com slug prefixado pelo pai para evitar conflitos (ex: hardware-outros, software-outros)
         const children = subCats.map(name => ({
           nome: name,
-          slug: name.toLowerCase().replace(/ /g, '_'),
+          slug: `${parentSlug}-${slugify(name)}`,
           ordem: 0,
           ativo: true
         }))
