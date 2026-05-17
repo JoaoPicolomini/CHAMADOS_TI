@@ -77,7 +77,7 @@ export default function SlaMonitoringPage() {
 
   // Enriquece com SLA calculado e agrupa
   const enriched = chamados.map(c => {
-    const sla = calcularSla(c.sla_prazo, c.sla_violado, c.sla_horas_pausadas ?? 0, c.created_at)
+    const sla = calcularSla(c.sla_prazo, c.sla_violado, c.sla_horas_pausadas ?? 0, c.created_at, c.sla_pausado_em)
     const grupo: SlaGrupo = sla ? getSlaGrupo(sla.percentual, sla.violado) : 'ok'
     return { ...c, sla, grupo }
   })

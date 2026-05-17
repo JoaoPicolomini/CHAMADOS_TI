@@ -270,7 +270,7 @@ export async function transicionarStatusAction(payload: TransicaoStatusPayload) 
       const diffHoras = (fim.getTime() - inicio.getTime()) / (1000 * 60 * 60)
       
       updateData.sla_pausado_em = null
-      updateData.sla_horas_pausadas = Math.round((chamado.sla_horas_pausadas || 0) + diffHoras)
+      updateData.sla_horas_pausadas = (chamado.sla_horas_pausadas || 0) + Math.max(0, diffHoras)
     }
 
     // Executa update
@@ -596,6 +596,7 @@ export async function buscarChamadosAction(filtros: {
         id, numero, titulo, prioridade, tipo, status,
         solicitante_nome, solicitante_setor, solicitante_email,
         equipe_id, tecnico_id, sla_prazo, sla_violado,
+        sla_horas_pausadas, sla_pausado_em, fechado_em,
         nivel_suporte, created_at, updated_at,
         categoria:categoria_id(id, nome),
         equipe:equipe_id(id, nome),

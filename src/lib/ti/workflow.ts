@@ -140,29 +140,41 @@ export function calcularSla(
   slaViolado: boolean,
   slaHorasPausadas = 0,
   criadoEm?: string,
+  slaPausadoEm?: string | null,
+  referenceTime?: Date,
 ): SlaCalculo | null {
   if (!prazoSla) return null
 
-  const agora = new Date()
-  const prazo = new Date(prazoSla)
-  
-  // Ajusta o prazo com as horas que foram pausadas
-  if (slaHorasPausadas > 0) {
-    prazo.setHours(prazo.getHours() + slaHorasPausadas)
+  // Para tickets encerrados, usar o momento do fechamento como referência.
+  // Evita mostrar "violado" em tickets que foram resolvidos dentro do prazo.
+  const agora = referenceTime ?? new Date()
+  const prazoOriginal = new Date(prazoSla)
+
+  // Acumula: horas pausadas já registradas + pausa atual em andamento
+  let totalPausadoMs = slaHorasPausadas * 60 * 60 * 1000
+  if (slaPausadoEm) {
+    const inicioPausa = new Date(slaPausadoEm)
+    totalPausadoMs += Math.max(0, agora.getTime() - inicioPausa.getTime())
   }
 
-  const msRestante = prazo.getTime() - agora.getTime()
+  // Prazo ajustado para detectar violação (deadline real com pausas)
+  const prazoAjustado = new Date(prazoOriginal.getTime() + totalPausadoMs)
+
+  const msRestante = prazoAjustado.getTime() - agora.getTime()
   const horasRestantes = msRestante / (1000 * 60 * 60)
   const minutosRestantes = msRestante / (1000 * 60)
   const violado = msRestante <= 0 || slaViolado
 
-  // Percentual: estimamos com base em criadoEm ou marcamos como >100
+  // Percentual = tempo ativo consumido / orçamento SLA original
+  // tempo ativo = tempo total decorrido − tempo pausado
   let percentual = 100
   if (criadoEm) {
     const criado = new Date(criadoEm)
-    const totalMs = prazo.getTime() - criado.getTime()
-    const consumidoMs = agora.getTime() - criado.getTime()
-    percentual = totalMs > 0 ? Math.min((consumidoMs / totalMs) * 100, 200) : 100
+    const orcamentoMs = prazoOriginal.getTime() - criado.getTime()
+    const consumidoAtivoMs = (agora.getTime() - criado.getTime()) - totalPausadoMs
+    percentual = orcamentoMs > 0
+      ? Math.min(Math.max((consumidoAtivoMs / orcamentoMs) * 100, 0), 200)
+      : 100
   } else if (violado) {
     percentual = 110
   }

@@ -84,6 +84,9 @@ export const ATIVO_TIPO_LABELS: Record<TiAtivoTipo, string> = {
 // ─── Status terminais (não transitam mais) ────────────────────
 export const STATUS_TERMINAIS: TiStatus[] = ['fechado', 'fechado_automatico', 'cancelado']
 
+// ─── Status terminais para fins de SLA (inclui 'resolvido') ──
+export const STATUS_TERMINAIS_SLA: TiStatus[] = ['fechado', 'fechado_automatico', 'cancelado', 'resolvido']
+
 // ─── Status que SLA continua correndo ─────────────────────────
 export const STATUS_SLA_ATIVO: TiStatus[] = [
   'aberto', 'em_atendimento', 'reaberto'

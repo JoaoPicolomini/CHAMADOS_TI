@@ -41,5 +41,8 @@ n8n_data/
 *.swo
 
 # agents
-
 .agent/
+
+# Local DBs and caches
+ruvector.db
+*.tsbuildinfo

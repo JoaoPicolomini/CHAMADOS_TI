@@ -30,6 +30,7 @@ import {
   STATUS_LABELS, STATUS_COLORS,
   PRIORIDADE_LABELS, PRIORIDADE_COLORS,
   TIPO_LABELS, ORIGEM_LABELS,
+  STATUS_TERMINAIS_SLA,
 } from '@/lib/ti/constants'
 import type { TiStatus, TiNivelSuporte } from '@/lib/ti/types'
 
@@ -75,7 +76,11 @@ function fileIcon(mime: string | null) {
 
 // ─── SLA Bar ──────────────────────────────────────────────────
 function SlaBar({ chamado }: { chamado: any }) {
-  const sla = calcularSla(chamado.sla_prazo, chamado.sla_violado, chamado.sla_horas_pausadas ?? 0, chamado.created_at)
+  const isTerminal = STATUS_TERMINAIS_SLA.includes(chamado.status)
+  const referenceTime = isTerminal && chamado.fechado_em
+    ? new Date(chamado.fechado_em)
+    : undefined
+  const sla = calcularSla(chamado.sla_prazo, chamado.sla_violado, chamado.sla_horas_pausadas ?? 0, chamado.created_at, chamado.sla_pausado_em, referenceTime)
   if (!sla) return null
 
   const pct = Math.min(sla.percentual, 100)

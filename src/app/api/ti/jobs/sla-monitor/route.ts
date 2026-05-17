@@ -14,7 +14,8 @@ function getAdminSupabase() {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-const STATUS_ATIVOS = ['aberto', 'em_atendimento', 'escalado', 'reaberto']
+// 'escalado' removido — é status de SLA pausado, não deve gerar violação/alerta
+const STATUS_ATIVOS = ['aberto', 'em_atendimento', 'reaberto']
 
 /**
  * GET /api/ti/jobs/sla-monitor
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
       .from('ti_chamados')
       .select(`
         id, numero, titulo, prioridade, status, created_at,
-        sla_prazo, sla_violado, sla_horas_pausadas,
+        sla_prazo, sla_violado, sla_horas_pausadas, sla_pausado_em,
         solicitante_nome, solicitante_email, solicitante_setor,
         tecnico:tecnico_id(id, email, nome)
       `)
@@ -58,6 +59,9 @@ export async function GET(req: NextRequest) {
 
     for (const chamado of chamados ?? []) {
       try {
+        // Segurança extra: pula se o SLA estiver pausado no momento
+        if (chamado.sla_pausado_em) continue
+
         stats.processados++
 
         const sla = calcularSla(

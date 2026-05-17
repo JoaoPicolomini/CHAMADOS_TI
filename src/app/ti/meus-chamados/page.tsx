@@ -6,7 +6,7 @@ import { useMsal } from '@azure/msal-react'
 import { Ticket, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { buscarChamadosAction, checkTiUserAccess } from '@/lib/ti/actions'
 import { calcularSla } from '@/lib/ti/workflow'
-import { STATUS_LABELS, STATUS_COLORS, PRIORIDADE_LABELS, PRIORIDADE_COLORS } from '@/lib/ti/constants'
+import { STATUS_LABELS, STATUS_COLORS, PRIORIDADE_LABELS, PRIORIDADE_COLORS, STATUS_TERMINAIS_SLA } from '@/lib/ti/constants'
 import type { TiStatus, TiPrioridade } from '@/lib/ti/types'
 
 type Chamado = {
@@ -14,6 +14,8 @@ type Chamado = {
   prioridade: TiPrioridade; tipo: string; status: TiStatus
   solicitante_nome: string; solicitante_setor: string; solicitante_email: string
   sla_prazo: string | null; sla_violado: boolean
+  sla_horas_pausadas: number; sla_pausado_em: string | null
+  fechado_em: string | null
   created_at: string; updated_at: string
   categoria?: { id: string; nome: string } | null
   equipe?:    { id: string; nome: string } | null
@@ -21,7 +23,9 @@ type Chamado = {
 }
 
 function SlaChip({ chamado }: { chamado: Chamado }) {
-  const sla = calcularSla(chamado.sla_prazo, chamado.sla_violado, 0, chamado.created_at)
+  const isTerminal = STATUS_TERMINAIS_SLA.includes(chamado.status)
+  const referenceTime = isTerminal && chamado.fechado_em ? new Date(chamado.fechado_em) : undefined
+  const sla = calcularSla(chamado.sla_prazo, chamado.sla_violado, chamado.sla_horas_pausadas ?? 0, chamado.created_at, chamado.sla_pausado_em, referenceTime)
   if (!sla) return <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>—</span>
 
   const cfg = {
